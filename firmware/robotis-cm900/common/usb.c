@@ -1,5 +1,5 @@
 #include "usb.h"
-#include "stm32f411xe.h"
+#include "stm32f103xb.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include "delay.h"
@@ -9,14 +9,15 @@
 extern void usb_ep1_txf_empty() __attribute__((weak));
 extern void usb_ep1_tx_complete() __attribute__((weak));
 
-static bool g_usb_config_complete = false;
+//static bool g_usb_config_complete = false;
 #define PORTA_USB_DM_PIN 11
 #define PORTA_USB_DP_PIN 12
 
 #define USB_TIMEOUT 200000
-static USB_OTG_DeviceTypeDef * const g_usbd = 
-  (USB_OTG_DeviceTypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + 
-                            USB_OTG_DEVICE_BASE);
+//static USB_TypeDef * const g_usbd = 
+//  (USB_TypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + 
+//                            USB_OTG_DEVICE_BASE);
+#if 0
 #define USB_INEP(i)  ((USB_OTG_INEndpointTypeDef *)(( uint32_t)USB_OTG_FS_PERIPH_BASE + USB_OTG_IN_ENDPOINT_BASE + (i)*USB_OTG_EP_REG_SIZE))        
 #define USB_OUTEP(i) ((USB_OTG_OUTEndpointTypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + USB_OTG_OUT_ENDPOINT_BASE + (i)*USB_OTG_EP_REG_SIZE))
 #define USB_WAIT_RET_BOOL(cond) \
@@ -29,6 +30,7 @@ static USB_OTG_DeviceTypeDef * const g_usbd =
   } while (0)
 #define USB_FIFO_BASE ((uint32_t *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_FIFO_BASE))
 #define USB_FIFO(i) ((uint32_t *)(USB_FIFO_BASE + 1024 * i))
+#endif
 
 typedef struct
 {
@@ -110,6 +112,7 @@ static const usb_config_desc_t g_usb_config_desc =
   }
 };
 
+#if 0
 bool usb_flush_txfifo(uint32_t fifo)
 {
   USB_OTG_FS->GRSTCTL = USB_OTG_GRSTCTL_TXFFLSH | (fifo << 5);
@@ -125,9 +128,11 @@ bool usb_flush_rxfifo()
                     USB_OTG_GRSTCTL_RXFFLSH);
   return true;
 }
+#endif
 
 static bool usb_reset()
 {
+#if 0
   uint32_t i = 0;
   do
   {
@@ -147,6 +152,7 @@ static bool usb_reset()
       return false;
     }
   } while (USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_CSRST); 
+#endif
   return true;
 }
 
@@ -173,18 +179,23 @@ void usb_init()
   g_usb_device_descriptor[16] = 0x00; // serial number string idx
   g_usb_device_descriptor[17] = 1; // number of possible configurations
 
-  pin_set_alternate_function(GPIOA, PORTA_USB_DM_PIN, 10); // usb is AF10
-  pin_set_alternate_function(GPIOA, PORTA_USB_DP_PIN, 10); // usb is AF10
+  pin_set_alternate_function(GPIOA, PORTA_USB_DM_PIN);
+  pin_set_alternate_function(GPIOA, PORTA_USB_DP_PIN);
+  /*
   pin_set_output_speed(GPIOA, PORTA_USB_DM_PIN, 3); // max beef
   pin_set_output_speed(GPIOA, PORTA_USB_DP_PIN, 3); // max beef
-
-  RCC->AHB2ENR |= RCC_AHB2ENR_OTGFSEN; // turn on USB OTG FS clock gate
-  USB_OTG_FS->GUSBCFG |= USB_OTG_GUSBCFG_PHYSEL; // is this necessary?
+  */
+  RCC->APB1ENR |= RCC_APB1ENR_USBEN; // turn on USB OTG FS clock gate
+  //USB->GUSBCFG |= USB_OTG_GUSBCFG_PHYSEL; // is this necessary?
+  USB->CNTR &= ~USB_CNTR_PDWN; // power-up USB analog stuff
+  delay_us(5); // datasheet says it needs 1 us to power up
+  USB->CNTR &= ~USB_CNTR_FRES; // release USB reset
   delay_ms(10);
   if (usb_reset())
     printf("usb core reset successfully\r\n");
   else
     printf("usb core failed to reset\r\n");
+#if 0
   //USB_OTG_FS->GINTSTS = 0; // |= USB_OTG_GINTSTS_RXFLVL; // set rx fifo level (?)
   USB_OTG_FS->GCCFG = USB_OTG_GCCFG_PWRDWN     | // wake up the transceiver (?)
                       USB_OTG_GCCFG_NOVBUSSENS ;
@@ -221,6 +232,7 @@ void usb_init()
                          // actually, let's leave this at half-empty for now...
   NVIC_SetPriority(OTG_FS_IRQn, 1); // high priority, respond quickly
   NVIC_EnableIRQ(OTG_FS_IRQn);
+#endif
 }
 
 extern void usb_rx(const uint8_t ep, 
@@ -229,6 +241,7 @@ extern void usb_rx(const uint8_t ep,
 
 void usb_rx_internal(const uint8_t ep, const uint8_t *data, const uint8_t len)
 {
+#if 0
   if (ep >= 4)
     return; // adios amigo
   USB_OUTEP(ep)->DOEPTSIZ = (1 << 19) | 64; // buffer one full-length packet
@@ -236,10 +249,12 @@ void usb_rx_internal(const uint8_t ep, const uint8_t *data, const uint8_t len)
                             USB_OTG_DOEPCTL_EPENA ; // re-enable RX endpoint
   if (usb_rx)
     usb_rx(ep, data, len);
+#endif
 }
 
 bool usb_tx(const uint8_t ep, const uint8_t *payload, const uint8_t payload_len)
 {
+#if 0
   if (ep >= 4)
     return false;
   if (ep != 0 && !g_usb_config_complete)
@@ -250,26 +265,33 @@ bool usb_tx(const uint8_t ep, const uint8_t *payload, const uint8_t payload_len)
   uint32_t *fifo = USB_FIFO(ep); // memory-mapped magic...
   for (int word_idx = 0; word_idx < (payload_len + 3) / 4; word_idx++)
     *fifo = *((uint32_t *)&payload[word_idx * 4]); // abomination
+#endif
   return true;
 }
 
 bool usb_txf_avail(const uint8_t ep, const uint8_t nbytes)
 {
+#if 0
   if (ep >= 4)
     return false;
   return USB_INEP(ep)->DTXFSTS >= nbytes / 4;
+#endif
+  return true;
 }
 
 bool usb_tx_stall(const uint8_t ep)
 {
+#if 0
   if (ep >= 4)
     return false; // adios amigo
   USB_INEP(ep)->DIEPCTL |= USB_OTG_DIEPCTL_STALL;
+#endif
   return true;
 }
 
 bool usb_setup_rx(uint8_t *buf, const uint32_t len)
 {
+#if 0
   const uint8_t  request_type = buf[0];
   const uint8_t  request = buf[1];
   const uint16_t request_value = buf[2] | ((uint16_t)buf[3] << 8);
@@ -348,12 +370,14 @@ bool usb_setup_rx(uint8_t *buf, const uint32_t len)
   for (int i = 0; i < len; i++)
     printf("%02x ", buf[i]);
   printf("\r\n");
+#endif
   return false;
 }
 
 
 void otg_fs_vector()
 {
+#if 0
   //printf("otg vect\r\n");
   //printf("unhandled gintsts = %08x\r\n", (unsigned)USB_OTG_FS->GINTSTS);
   if (USB_OTG_FS->GINTSTS & USB_OTG_GINTSTS_USBRST)
@@ -502,5 +526,6 @@ void otg_fs_vector()
   {
     printf("unhandled gintsts = %08x\r\n", (unsigned)USB_OTG_FS->GINTSTS);
   }
+#endif
 }
 
