@@ -1,7 +1,7 @@
 #include "led.h"
 #include "pin.h"
 
-#define PORTB_LED 2
+#define PORTB_LED 9
 
 void led_init()
 {
