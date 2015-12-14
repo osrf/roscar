@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "console.h"
 #include "systime.h"
+#include "usb.h"
 
 int main()
 {
@@ -11,6 +12,7 @@ int main()
   console_init();
   printf("APP ENTRY\r\n");
   systime_init();
+  usb_init();
   while (1)
   {
     delay_ms(500);
