@@ -34,7 +34,10 @@ void pin_set_output_type(GPIO_TypeDef *gpio,
 }
 #endif
 
-void pin_set_alternate_function(GPIO_TypeDef *gpio, const uint8_t pin_idx)
+void pin_set_alternate_function(GPIO_TypeDef *gpio,
+                                const uint8_t pin_idx,
+                                const bool is_output,
+                                const pin_pull_t pull)
 {
   if (pin_idx > 15)
     return; // adios amigo
@@ -48,7 +51,28 @@ void pin_set_alternate_function(GPIO_TypeDef *gpio, const uint8_t pin_idx)
   }
   else
     pc = &gpio->CRL;
-  *pc = (*pc & ~(0xf << shift)) | (0xb << shift); // high-speed AF mode
+  *pc &= ~(0xf << shift); // wipe out whatever was there before
+  uint32_t mode_bits = 0;
+  if (is_output)
+    mode_bits = 0xb; // high-speed AF output
+  else // it's an input
+  {
+    if (pull == PIN_PULL_NONE)
+      mode_bits = 0x4;
+    else if (pull == PIN_PULL_UP)
+    {
+      mode_bits = 0x8;
+      gpio->ODR |= 1 << pin_idx;
+    }
+    else if (pull == PIN_PULL_DOWN)
+    {
+      mode_bits = 0x8;
+      gpio->ODR &= ~(1 << pin_idx);
+    }
+    else
+      while (1) { }  // IT'S A TRAP!!!
+  }
+  *pc |= (mode_bits << shift);
 }
 
 void pin_set_output(GPIO_TypeDef *gpio, 

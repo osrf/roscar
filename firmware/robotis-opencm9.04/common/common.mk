@@ -43,7 +43,7 @@ erase:
 	$(OPENOCD) -c "init; halt; stm32f1x unlock 0; reset halt; stm32f1x mass_erase 0; shutdown"
 
 program: $(OUT).bin
-	$(OPENOCD) -c "init; sleep 100; halt; sleep 100; flash write_image $(OUT).bin $(IMAGE_START); verify_image $(OUT).bin $(IMAGE_START); sleep 100; reset run; sleep 100; shutdown"
+	$(OPENOCD) -c "init; sleep 100; halt; sleep 100; flash write_image erase $(OUT).bin $(IMAGE_START); verify_image $(OUT).bin $(IMAGE_START); sleep 100; reset run; sleep 100; shutdown"
 
 dump_flash: $(BIN)
 	$(OPENOCD) -c "init; halt; flash banks; dump_image $(OUT).bin.dump $(IMAGE_START) 0x1000; reset run; shutdown"

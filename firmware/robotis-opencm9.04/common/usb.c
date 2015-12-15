@@ -13,6 +13,8 @@ extern void usb_ep1_tx_complete() __attribute__((weak));
 #define PORTA_USB_DM_PIN 11
 #define PORTA_USB_DP_PIN 12
 
+#define PORTC_USB_DISCONNECT_PIN 13
+
 #define USB_TIMEOUT 200000
 //static USB_TypeDef * const g_usbd = 
 //  (USB_TypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + 
@@ -32,48 +34,123 @@ extern void usb_ep1_tx_complete() __attribute__((weak));
 #define USB_FIFO(i) ((uint32_t *)(USB_FIFO_BASE + 1024 * i))
 #endif
 
-typedef struct
+typedef struct usb_ep_desc
 {
-  uint8_t  length;
-  uint8_t  descriptor_type;
-  uint8_t  endpoint_address;
-  uint8_t  attributes;
-  uint16_t max_packet_size;
+  uint8_t  len;
+  uint8_t  desc_type;
+  uint8_t  ep_addr;
+  uint8_t  attr;
+  uint16_t max_pkt_size;
   uint8_t  interval;
 } __attribute__((packed)) usb_ep_desc_t;
 
-typedef struct
+typedef struct usb_iface_desc
 {
-  uint8_t length;
-  uint8_t descriptor_type;
-  uint8_t interface_number;
-  uint8_t alternate_setting;
-  uint8_t num_endpoints;
-  uint8_t interface_class;
-  uint8_t interface_subclass;
-  uint8_t interface_protocol;
-  uint8_t interface_string_index;
+  uint8_t len;
+  uint8_t desc_type;
+  uint8_t iface_num;
+  uint8_t alt_setting;
+  uint8_t num_ep;
+  uint8_t iface_class;
+  uint8_t iface_subclass;
+  uint8_t iface_proto;
+  uint8_t iface_str_idx;
   usb_ep_desc_t eps[2];
 } __attribute__((packed)) usb_iface_desc_t;
 
-typedef struct 
+typedef struct usb_config_desc
 {
-  uint8_t  length;
-  uint8_t  descriptor_type;
-  uint16_t total_length;
-  uint8_t  num_interfaces;
-  uint8_t  configuration_value;
-  uint8_t  configuration_string_index;
+  uint8_t  len;
+  uint8_t  desc_type;
+  uint16_t total_len;
+  uint8_t  num_ifaces;
+  uint8_t  config_val;
+  uint8_t  config_str_idx;
   uint8_t  attributes;
   uint8_t  max_power;
   usb_iface_desc_t ifaces[1];
 } __attribute__((packed)) usb_config_desc_t;
 
-static const usb_config_desc_t g_usb_config_desc = 
+#define USB_DESC_TYPE_DEVICE   0x1
+#define USB_DESC_TYPE_CONFIG   0x2
+#define USB_DESC_TYPE_STRING   0x3
+#define USB_DESC_TYPE_IFACE    0x4
+#define USB_DESC_TYPE_ENDPOINT 0x5
+
+#define USB_EP_TYPE_BULK       0x2
+
+#define USB_PROTO 0x0200
+#define USB_DEV_CLASS_CUSTOM    0xff
+#define USB_DEV_SUBCLASS_CUSTOM 0xff
+#define USB_DEV_PROTO_CUSTOM    0xff
+#define USB_MAX_EP0_PKT_SIZE 64
+#define USB_VID 0xf055
+#define USB_PID 2
+#define USB_BCD_DEV 0
+#define USB_NO_MFGR_STR 0
+#define USB_NO_PROD_STR 0
+#define USB_NO_SERIAL_STR 0
+
+typedef struct usb_device_desc
+{
+  uint8_t  len;
+  uint8_t  desc_type;
+  uint16_t usb_ver;
+  uint8_t  dev_class;
+  uint8_t  dev_subclass;
+  uint8_t  dev_protocol;
+  uint8_t  max_ep0_pkt_size;
+  uint16_t  vid;
+  uint16_t  pid;
+  uint16_t  bcdDevice; // wtf
+  uint8_t   man_str_idx;
+  uint8_t   prod_str_idx;
+  uint8_t   ser_num_str_idx;
+  uint8_t   num_config;
+} __attribute__((packed)) usb_device_desc_t;
+
+typedef struct usb_lang_list_desc
+{
+  uint8_t len;
+  uint8_t desc_type;
+  uint16_t langs[1]; // todo... allow more languages... someday
+} __attribute__((packed)) usb_lang_list_desc_t;
+
+#define USB_LANG_ID_ENGLISH_USA 0x0409
+
+typedef struct usb_string_desc
+{
+  uint8_t  len;
+  uint8_t  desc_type;
+  char    *str;
+} __attribute__((packed)) usb_string_desc_t;
+
+#define USB_VENDOR_STRING  1
+#define USB_PRODUCT_STRING 2
+
+static const struct usb_device_desc g_usb_device_desc =
+{
+  sizeof(struct usb_device_desc),
+  USB_DESC_TYPE_DEVICE,
+  USB_PROTO,
+  USB_DEV_CLASS_CUSTOM,
+  USB_DEV_SUBCLASS_CUSTOM,
+  USB_DEV_PROTO_CUSTOM,
+  USB_MAX_EP0_PKT_SIZE,
+  USB_VID,
+  USB_PID,
+  USB_BCD_DEV,
+  USB_VENDOR_STRING,
+  USB_PRODUCT_STRING,
+  USB_NO_SERIAL_STR,
+  1 // one configuration
+};
+
+static const struct usb_config_desc g_usb_config_desc = 
 { 
-  9, // length of this configuration descriptor
-  2, // configuration descriptor type
-  9 + 9 + 2 * 7, // total length 
+  9, // length of configuration descriptor
+  USB_DESC_TYPE_CONFIG, // configuration descriptor type
+  9 + 9 + 2 * sizeof(struct usb_ep_desc), // total length 
   1, // number of interfaces
   0, // configuration value
   0, // no string
@@ -82,7 +159,7 @@ static const usb_config_desc_t g_usb_config_desc =
   {
     {
       9, // length of this interface descriptor
-      4, // interface descriptor type
+      USB_DESC_TYPE_IFACE, // interface descriptor type
       0, // interface number
       0, // alternate setting
       2, // no extra endpoints
@@ -92,18 +169,18 @@ static const usb_config_desc_t g_usb_config_desc =
       0, // no string 
       { 
         {
-          7, // length of this endpoint descriptor
-          5, // endpoint descriptor type
+          sizeof(struct usb_ep_desc), // length of endpoint descriptor
+          USB_DESC_TYPE_ENDPOINT,
           0x81, // EP1 IN
-          0x02, // bulk endpoint
+          USB_EP_TYPE_BULK,
           64, // max packet size
           1 // interval. ignored for bulk endpoints anyway.
         },
         {
-          7, // length of this endpoint descriptor
-          5, // endpoint descriptor type
+          sizeof(struct usb_ep_desc), // length of endpoint descriptor
+          USB_DESC_TYPE_ENDPOINT,
           0x02, // EP2 OUT
-          0x02, // bulk endpoint
+          USB_EP_TYPE_BULK, // bulk endpoint
           64, // max packet size
           1 // interval. ignored for bulk endpoints anyway.
         }
@@ -111,6 +188,99 @@ static const usb_config_desc_t g_usb_config_desc =
     }
   }
 };
+
+const struct usb_lang_list_desc g_usb_default_lang_list_desc =
+{
+  sizeof(struct usb_lang_list_desc),
+  USB_DESC_TYPE_STRING,
+  {
+    USB_LANG_ID_ENGLISH_USA
+  }
+};
+
+//static const char *g_usb_vendor_str = "OSRF";
+//static const char *g_usb_product_str = "roscar";
+
+static uint8_t g_usb_setup_pkt_buf[256];
+
+////////////////////////////////////////////////////////////////
+
+uint8_t usb_stuff_desc_string(const char *str)
+{
+  const uint8_t len = strlen(str);
+  g_usb_setup_pkt_buf[0] = 2 + 2 * len;
+  g_usb_setup_pkt_buf[1] = USB_DESC_TYPE_STRING;
+  for (int i = 0; i < len; i++)
+  {
+    g_usb_setup_pkt_buf[2 + i*2] = str[i];
+    g_usb_setup_pkt_buf[3 + i*2] = 0;
+  }
+  return 2 + 2 * len;
+}
+
+void usb_rx_setup(const uint8_t *buf, const unsigned len)
+{
+  const uint8_t  req_type  = buf[0];
+  const uint8_t  req       = buf[1];
+  const uint16_t req_val   = buf[2] | (buf[3] << 8);
+  const uint16_t req_index = buf[4] | (buf[5] << 8);
+  const uint16_t req_count = buf[6] | (buf[7] << 8);
+
+  printf("ep0 setup type %02x req %02x val %04x index %04x count %04x\r\n",
+         req_type, req, req_val, req_index, req_count);
+  /*
+  if (req_type == 0x80 && req == 0x06) // get descriptor
+  {
+    const void *p_desc = NULL;
+    uint16_t desc_len = 0;
+    if (req_val == 0x0100) // get device descriptor
+    {
+      p_desc = &g_usb_device_desc;
+      desc_len = sizeof(g_usb_device_desc);
+    }
+    else if (req_val == 0x0200) // get configuration descriptor
+    {
+      p_desc = &g_usb_config_desc;
+      desc_len = sizeof(g_usb_config_desc);
+    }
+    else if (req_val == 0x0300) // get string language list
+    {
+      p_desc = &g_usb_lang_list_desc;
+      desc_len = sizeof(g_usb_lang_list_desc);
+    }
+    else if (req_val == 0x0302) // get product string
+    {
+      p_desc = g_metal_usb_setup_pkt_buf;
+      desc_len = usb_stuff_desc_string(g_metal_usb_product_str);
+    }
+    ////////////////////
+    if (p_desc)
+    {
+      int tx_len = desc_len < req_count ? desc_len : req_count;
+      usb_tx(0, p_desc, tx_len);
+    }
+    else
+    {
+      printf("TRAP!!! unknown descriptor request: 0x%04x\r\n", req_val);
+      while(1) { } // IT'S A TRAP
+    }
+  }
+  else if (req_type == 0x00 && req == 0x05) // set address
+    usb_set_addr((uint8_t)req_val);
+  else if (req_type == 0x00 && req == 0x09) // set configuration
+  {
+    // todo: call into mac-specific function to set up endpoints, etc.
+    usb_tx(0, NULL, 0);
+  }
+  else
+  {
+    printf("unknown setup rx: req_type = 0x%02x, req = 0x%02x\r\n",
+           req_type, req);
+    printf("trapping...\r\n");
+    while(1) { } // IT'S A TRAP
+  }
+  */
+}
 
 #if 0
 bool usb_flush_txfifo(uint32_t fifo)
@@ -130,109 +300,69 @@ bool usb_flush_rxfifo()
 }
 #endif
 
-static bool usb_reset()
-{
-#if 0
-  uint32_t i = 0;
-  do
-  {
-    if (++i > USB_TIMEOUT)
-    {
-      printf("hit timeout waiting for ahb idle state\r\n");
-      return false;
-    }
-  } while (!(USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_AHBIDL));
-  USB_OTG_FS->GRSTCTL |= USB_OTG_GRSTCTL_CSRST; // start core soft reset
-  i = 0;
-  do
-  {
-    if (++i > USB_TIMEOUT)
-    {
-      printf("hit timeout waiting for core reset to complete\r\n");
-      return false;
-    }
-  } while (USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_CSRST); 
-#endif
-  return true;
-}
+//#define USB_PKTBUF ((uint32_t)0x40006000)
+#define USB_TX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8  )*2))
+#define USB_TX_CNT(ep)  ((uint32_t *)(USB_PMAADDR + (ep*8+2)*2))
+#define USB_RX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8+4)*2))
+#define USB_RX_CNT(ep)  ((uint32_t *)(USB_PMAADDR + (ep*8+6)*2))
 
-uint8_t g_usb_device_descriptor[18];
+// we'll have 4 descriptors: EP0 control TX/RX, EP1 bulk RX, EP2 bulk TX
+// so our descriptor table will be 8*4 = 0x20 bytes long
+// we'll start putting 64-byte buffers after that
+#define USB_EP0_TX_BUF 0x20
+#define USB_EP0_RX_BUF 0x60
+#define USB_EP1_RX_BUF 0xc0
+#define USB_EP2_TX_BUF 0x100
+
+static void usb_reset();
 
 void usb_init()
 {
-  g_usb_device_descriptor[0] = 18; // TODO
-  g_usb_device_descriptor[1] = 1; // device desciptor type
-  g_usb_device_descriptor[2] = 0x00; // usb 2.0
-  g_usb_device_descriptor[3] = 0x02; // usb 2.0
-  g_usb_device_descriptor[4] = 0xff; // custom device class
-  g_usb_device_descriptor[5] = 0xff; // no subclass code for custom device
-  g_usb_device_descriptor[6] = 0xff; // no protocol code for custom device
-  g_usb_device_descriptor[7] = 64;   // max packet size for EP0
-  g_usb_device_descriptor[8] = 0x55; // vid
-  g_usb_device_descriptor[9] = 0xf0; // vid
-  g_usb_device_descriptor[10] = 0x25; // pid
-  g_usb_device_descriptor[11] = 0x01; // pid
-  g_usb_device_descriptor[12] = 0x00; // bcdDevice
-  g_usb_device_descriptor[13] = 0x00; // bcdDevice
-  g_usb_device_descriptor[14] = 0x00; // manufacturer string idx
-  g_usb_device_descriptor[15] = 0x00; // product string idx
-  g_usb_device_descriptor[16] = 0x00; // serial number string idx
-  g_usb_device_descriptor[17] = 1; // number of possible configurations
+  RCC->APB1RSTR |= RCC_APB1RSTR_USBRST; // reset the USB subsystem
+  RCC->APB2ENR |= RCC_APB2ENR_AFIOEN; // power up the AF i/o machinery
+  RCC->APB1RSTR &= ~RCC_APB1RSTR_USBRST; // de-assert USB core reset
 
-  pin_set_alternate_function(GPIOA, PORTA_USB_DM_PIN);
-  pin_set_alternate_function(GPIOA, PORTA_USB_DP_PIN);
-  /*
-  pin_set_output_speed(GPIOA, PORTA_USB_DM_PIN, 3); // max beef
-  pin_set_output_speed(GPIOA, PORTA_USB_DP_PIN, 3); // max beef
-  */
+  // force disconnect from host OS
+  pin_set_output(GPIOC, PORTC_USB_DISCONNECT_PIN, 1);
+  delay_ms(50);
+  // connect (activate pullup on usb line)
+  pin_set_output(GPIOC, PORTC_USB_DISCONNECT_PIN, 0);
+  pin_set_alternate_function(GPIOA, PORTA_USB_DM_PIN, false, PIN_PULL_UP);
+  pin_set_alternate_function(GPIOA, PORTA_USB_DP_PIN, false, PIN_PULL_UP);
   RCC->APB1ENR |= RCC_APB1ENR_USBEN; // turn on USB OTG FS clock gate
-  //USB->GUSBCFG |= USB_OTG_GUSBCFG_PHYSEL; // is this necessary?
-  USB->CNTR &= ~USB_CNTR_PDWN; // power-up USB analog stuff
-  delay_us(5); // datasheet says it needs 1 us to power up
-  USB->CNTR &= ~USB_CNTR_FRES; // release USB reset
-  delay_ms(10);
-  if (usb_reset())
-    printf("usb core reset successfully\r\n");
-  else
-    printf("usb core failed to reset\r\n");
-#if 0
-  //USB_OTG_FS->GINTSTS = 0; // |= USB_OTG_GINTSTS_RXFLVL; // set rx fifo level (?)
-  USB_OTG_FS->GCCFG = USB_OTG_GCCFG_PWRDWN     | // wake up the transceiver (?)
-                      USB_OTG_GCCFG_NOVBUSSENS ;
-  USB_OTG_FS->GUSBCFG |= USB_OTG_GUSBCFG_FDMOD  | // set device mode
-                         (10 << 10)             | // set turnaround time to 10 clk
-                         USB_OTG_GUSBCFG_PHYSEL | // use built-in PHY
-                         5; // TOCAL value (?)
-  //delay_ms(50);
-  // enable all PHY clock gates. Maybe coming out of reset this isn't needed...
-  // not quite sure. But let's do it anyway.
-  *((uint32_t *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_PCGCCTL_BASE)) = 0;
-  g_usbd->DCFG &= ~USB_OTG_DCFG_DAD; // zero out the device address fields
-  g_usbd->DCFG |= 0x3 | // peg to full-speed
-                  USB_OTG_DCFG_NZLSOHSK; // non-zero length handshake (?)
+  USB->CNTR = USB_CNTR_FRES; // assert USB reset and power-up analog stuff
+  delay_us(2); // wait at least 1us, according to datasheet
+  USB->CNTR = 0; // clear USB reset
+  USB->ISTR = 0; // clear any pending interrupts
+  USB->BTABLE = 0;
+  usb_reset();
+  USB->CNTR |= USB_CNTR_CTRM    |
+               USB_CNTR_RESETM  |
+               USB_CNTR_PMAOVRM |
+               USB_CNTR_WKUPM   ;
+               //USB_CNTR_SUSPM   |
+               //USB_CNTR_ERRM    ;
+  // enable USB interrupts
+  NVIC_SetPriority(USB_HP_CAN1_TX_IRQn, 1);
+  NVIC_EnableIRQ(USB_HP_CAN1_TX_IRQn);
+  NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 1);
+  NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
   // wait for reset interrupt
-  // Wait for the ENUMDNE interrupt in OTG_FS_GINTSTS. 
-  // This interrupt indicates the end of reset on the USB. 
-  // On receiving this interrupt, the application must read the OTG_FS_DSTS
-  // USB on-the-go full-speed (OTG_FS) register to determine the 
-  // enumeration speed and perform the steps listed in Endpoint
-  // initialization on enumeration completion on page 770.
-  USB_OTG_FS->GINTMSK |= USB_OTG_GINTMSK_SOFM     | // start of frame
-                         //USB_OTG_GINTMSK_ESUSPM   | // early suspend
-                         //USB_OTG_GINTMSK_USBSUSPM | // usb suspend
-                         USB_OTG_GINTMSK_USBRST   | // usb reset
-                         USB_OTG_GINTMSK_ENUMDNEM | // enumeration done
-                         //USB_OTG_GINTMSK_OTGINT   | // otg interrupt 
-                         USB_OTG_GINTMSK_RXFLVLM  | // something is the RX FIFO
-                         USB_OTG_GINTMSK_MMISM    | // mode mismatch
-                         USB_OTG_GINTMSK_IEPINT   ; // IN endpoint interrupt
+}
 
-  USB_OTG_FS->GAHBCFG |= USB_OTG_GAHBCFG_GINT    | // enable usb interrupt
-                         USB_OTG_GAHBCFG_TXFELVL ; // interrupt only when empty
-                         // actually, let's leave this at half-empty for now...
-  NVIC_SetPriority(OTG_FS_IRQn, 1); // high priority, respond quickly
-  NVIC_EnableIRQ(OTG_FS_IRQn);
-#endif
+static void usb_reset()
+{
+  printf("URESET\r\n");
+  USB->ISTR &= ~USB_ISTR_RESET;
+  USB->DADDR = USB_DADDR_EF; // enable function
+  *(USB_TX_ADDR(0)) = USB_EP0_TX_BUF;
+  *(USB_TX_CNT(0)) = 0;
+  *(USB_RX_ADDR(0)) = USB_EP0_RX_BUF;
+  *(USB_RX_CNT(0))  = 0x8400; // this rx buffer is 64 bytes
+  USB->EP0R = USB_EP0R_EP_TYPE_0 | // this is a control endpoint
+              USB_EP0R_STAT_RX_0 | // enabled for reception
+              USB_EP0R_STAT_RX_1 | // ditto
+              USB_EP0R_STAT_TX_1 ; // respond to TX requests with NAK
 }
 
 extern void usb_rx(const uint8_t ep, 
@@ -374,10 +504,44 @@ bool usb_setup_rx(uint8_t *buf, const uint32_t len)
   return false;
 }
 
+void usb_hp_can1_tx_vector()
+{
+  printf("usb HP vector\r\n");
+}
 
+void usb_lp_can1_rx0_vector()
+{
+  //printf("  ep0r = 0x%08x\r\n", USB->EP0R);
+  //printf("  istr = %08x\r\n", USB->ISTR);
+  if (USB->ISTR & USB_ISTR_RESET)
+    usb_reset();
+  else if (USB->ISTR & USB_ISTR_WKUP)
+  {
+    printf("WKUP\r\n");
+    USB->ISTR &= ~USB_ISTR_WKUP;
+  }
+#if 0
+  else if (USB->ISTR & USB_ISTR_SUSP)
+  {
+    //printf("SUS\r\n");
+    USB->ISTR &= ~USB_ISTR_SUSP;
+  }
+  else if (USB->ISTR & USB_ISTR_ERR)
+  {
+    //printf("ERR\r\n");
+    USB->ISTR &= ~USB_ISTR_ERR;
+  }
+#endif
+  else
+  {
+    printf("unknown usb reset vector cause! usb istr = 0x%08x\r\n", USB->ISTR);
+    while (1) { } // TRAP
+  }
+}
+
+#if 0
 void otg_fs_vector()
 {
-#if 0
   //printf("otg vect\r\n");
   //printf("unhandled gintsts = %08x\r\n", (unsigned)USB_OTG_FS->GINTSTS);
   if (USB_OTG_FS->GINTSTS & USB_OTG_GINTSTS_USBRST)
@@ -526,6 +690,6 @@ void otg_fs_vector()
   {
     printf("unhandled gintsts = %08x\r\n", (unsigned)USB_OTG_FS->GINTSTS);
   }
-#endif
 }
+#endif
 
