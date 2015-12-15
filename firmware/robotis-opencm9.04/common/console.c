@@ -21,7 +21,7 @@ void console_init()
   pin_set_alternate_function(GPIOA, PORTA_TX_PIN, true, PIN_PULL_NONE);
   s_console_usart->CR1 &= ~USART_CR1_UE;
   s_console_usart->CR1 |=  USART_CR1_TE | USART_CR1_RE;
-  s_console_usart->BRR  = (((uint16_t)1) << 4) | 2;
+  s_console_usart->BRR  = (((uint16_t)2) << 4) | 4;
   s_console_usart->CR1 |=  USART_CR1_UE;
 }
 

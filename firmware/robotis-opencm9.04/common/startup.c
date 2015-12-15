@@ -46,9 +46,10 @@ void reset_vector()
     startup_clock_init_fail(); // go there and spin forever. BUH BYE
   // set up the clocking scheme
   RCC->APB1ENR |= RCC_APB1ENR_PWREN; // clock up the power controller
-  RCC->CFGR |= RCC_CFGR_HPRE_DIV1; // set HCLK (AHB clock) to sysclock
-  RCC->CFGR |= RCC_CFGR_PPRE2_DIV1; // set APB high-speed clock to sysclock
-  RCC->CFGR |= RCC_CFGR_PPRE1_DIV2; // set APB  low-speed clock to sysclock/2
+  RCC->CFGR |= RCC_CFGR_HPRE_DIV1   // set HCLK (AHB clock) to sysclock
+             | RCC_CFGR_PPRE2_DIV1  // set APB high-speed clock to sysclock
+             | RCC_CFGR_PPRE1_DIV2  // set APB  low-speed clock to sysclock/2
+             | RCC_CFGR_PLLSRC;     // run PLL on HSE (crystal oscillator)
   // PLL_VCO = crystal mhz * PLLMUL = 72 MHz
   // board has 8 MHz crystal, so we want PLLMUL = 72/8 = 9
   RCC->CFGR |= RCC_CFGR_PLLMULL9;

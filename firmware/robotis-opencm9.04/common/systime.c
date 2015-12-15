@@ -2,13 +2,13 @@
 #include "stm32f103xb.h"
 #include "delay.h"
 
-// TIM2 and TIM3 have a 36 MHz clock coming into them
+// TIM2 and TIM3 have a 72 MHz clock coming into them
 
 void systime_init()
 {
   RCC->APB1ENR |= RCC_APB1ENR_TIM2EN | RCC_APB1ENR_TIM3EN;
   for (volatile int i = 0; i < 10000; i++) { }
-  TIM2->PSC = 36-1; // prescalar counts microseconds
+  TIM2->PSC = 72-1; // prescalar counts microseconds
   TIM2->ARR = 0xffff; // count as long as possible
   TIM2->EGR = TIM_EGR_UG; // load the PSC register immediately
   TIM2->CR2 = TIM_CR2_MMS_1; // send update events

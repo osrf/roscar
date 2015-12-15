@@ -354,7 +354,6 @@ static void usb_reset()
 {
   printf("URESET\r\n");
   USB->ISTR &= ~USB_ISTR_RESET;
-  USB->DADDR = USB_DADDR_EF; // enable function
   *(USB_TX_ADDR(0)) = USB_EP0_TX_BUF;
   *(USB_TX_CNT(0)) = 0;
   *(USB_RX_ADDR(0)) = USB_EP0_RX_BUF;
@@ -363,6 +362,7 @@ static void usb_reset()
               USB_EP0R_STAT_RX_0 | // enabled for reception
               USB_EP0R_STAT_RX_1 | // ditto
               USB_EP0R_STAT_TX_1 ; // respond to TX requests with NAK
+  USB->DADDR = USB_DADDR_EF; // enable function
 }
 
 extern void usb_rx(const uint8_t ep, 
