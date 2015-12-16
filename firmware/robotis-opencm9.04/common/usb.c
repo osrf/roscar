@@ -351,9 +351,9 @@ static void usb_set_rx_status(const uint32_t ep, const uint32_t status)
     printf("woah! unknown EP: %d\r\n", (int)ep);
     while (1) { } // IT'S A TRAP!!!
   }
-  if (((*epr) & USB_EP0R_STAT_RX_0) != (status & 0x1))
+  if (((*epr >> 12) & 0x1) != (status & 0x1))
     toggle_mask |= USB_EP0R_STAT_RX_0;
-  if (((*epr) & USB_EP0R_STAT_RX_1) != (status & 0x2))
+  if (((*epr >> 12) & 0x2) != (status & 0x2))
     toggle_mask |= USB_EP0R_STAT_RX_1;
   *epr = toggle_mask;
 }
@@ -372,9 +372,10 @@ static void usb_set_tx_status(const uint32_t ep, const uint32_t status)
     printf("woah! unknown EP: %d\r\n", (int)ep);
     while (1) { } // IT'S A TRAP!!!
   }
-  if (((*epr) & USB_EP0R_STAT_TX_0) != (status & 0x1))
+  // needs to be boolean compares
+  if (((*epr >> 4) & 0x1) != (status & 0x1))
     toggle_mask |= USB_EP0R_STAT_TX_0;
-  if (((*epr) & USB_EP0R_STAT_TX_1) != (status & 0x2))
+  if (((*epr >> 4) & 0x2) != (status & 0x2))
     toggle_mask |= USB_EP0R_STAT_TX_1;
   *epr = toggle_mask;
 }
