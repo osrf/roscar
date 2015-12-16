@@ -11,7 +11,7 @@ int main()
   led_init();
   led_on();
   console_init();
-  printf("APP ENTRY\r\n");
+  printf("********************************\r\nAPP ENTRY\r\n");
   systime_init();
   usb_init();
   __enable_irq();

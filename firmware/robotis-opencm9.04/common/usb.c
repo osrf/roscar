@@ -9,30 +9,13 @@
 extern void usb_ep1_txf_empty() __attribute__((weak));
 extern void usb_ep1_tx_complete() __attribute__((weak));
 
-//static bool g_usb_config_complete = false;
+static bool g_usb_config_complete = false;
 #define PORTA_USB_DM_PIN 11
 #define PORTA_USB_DP_PIN 12
 
 #define PORTC_USB_DISCONNECT_PIN 13
 
 #define USB_TIMEOUT 200000
-//static USB_TypeDef * const g_usbd = 
-//  (USB_TypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + 
-//                            USB_OTG_DEVICE_BASE);
-#if 0
-#define USB_INEP(i)  ((USB_OTG_INEndpointTypeDef *)(( uint32_t)USB_OTG_FS_PERIPH_BASE + USB_OTG_IN_ENDPOINT_BASE + (i)*USB_OTG_EP_REG_SIZE))        
-#define USB_OUTEP(i) ((USB_OTG_OUTEndpointTypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + USB_OTG_OUT_ENDPOINT_BASE + (i)*USB_OTG_EP_REG_SIZE))
-#define USB_WAIT_RET_BOOL(cond) \
-  do { \
-    int count = 0; \
-    do { \
-      if ( ++count > USB_TIMEOUT ) \
-        return false; \
-    } while (cond); \
-  } while (0)
-#define USB_FIFO_BASE ((uint32_t *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_FIFO_BASE))
-#define USB_FIFO(i) ((uint32_t *)(USB_FIFO_BASE + 1024 * i))
-#endif
 
 typedef struct usb_ep_desc
 {
@@ -189,7 +172,7 @@ static const struct usb_config_desc g_usb_config_desc =
   }
 };
 
-const struct usb_lang_list_desc g_usb_default_lang_list_desc =
+const struct usb_lang_list_desc g_usb_lang_list_desc =
 {
   sizeof(struct usb_lang_list_desc),
   USB_DESC_TYPE_STRING,
@@ -198,8 +181,8 @@ const struct usb_lang_list_desc g_usb_default_lang_list_desc =
   }
 };
 
-//static const char *g_usb_vendor_str = "OSRF";
-//static const char *g_usb_product_str = "roscar";
+static const char *g_usb_vendor_str = "OSRF";
+static const char *g_usb_product_str = "roscar";
 
 static uint8_t g_usb_setup_pkt_buf[256];
 
@@ -223,12 +206,13 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
   const uint8_t  req_type  = buf[0];
   const uint8_t  req       = buf[1];
   const uint16_t req_val   = buf[2] | (buf[3] << 8);
-  const uint16_t req_index = buf[4] | (buf[5] << 8);
+  //const uint16_t req_index = buf[4] | (buf[5] << 8);
   const uint16_t req_count = buf[6] | (buf[7] << 8);
 
+  /*
   printf("ep0 setup type %02x req %02x val %04x index %04x count %04x\r\n",
          req_type, req, req_val, req_index, req_count);
-  /*
+  */
   if (req_type == 0x80 && req == 0x06) // get descriptor
   {
     const void *p_desc = NULL;
@@ -248,10 +232,15 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
       p_desc = &g_usb_lang_list_desc;
       desc_len = sizeof(g_usb_lang_list_desc);
     }
+    else if (req_val == 0x0301) // get vendor string
+    {
+      p_desc = g_usb_setup_pkt_buf;
+      desc_len = usb_stuff_desc_string(g_usb_vendor_str);
+    }
     else if (req_val == 0x0302) // get product string
     {
-      p_desc = g_metal_usb_setup_pkt_buf;
-      desc_len = usb_stuff_desc_string(g_metal_usb_product_str);
+      p_desc = g_usb_setup_pkt_buf;
+      desc_len = usb_stuff_desc_string(g_usb_product_str);
     }
     ////////////////////
     if (p_desc)
@@ -265,6 +254,7 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
       while(1) { } // IT'S A TRAP
     }
   }
+  /*
   else if (req_type == 0x00 && req == 0x05) // set address
     usb_set_addr((uint8_t)req_val);
   else if (req_type == 0x00 && req == 0x09) // set configuration
@@ -281,24 +271,6 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
   }
   */
 }
-
-#if 0
-bool usb_flush_txfifo(uint32_t fifo)
-{
-  USB_OTG_FS->GRSTCTL = USB_OTG_GRSTCTL_TXFFLSH | (fifo << 5);
-  USB_WAIT_RET_BOOL((USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH) == 
-                    USB_OTG_GRSTCTL_TXFFLSH);
-  return true;
-}
-
-bool usb_flush_rxfifo()
-{
-  USB_OTG_FS->GRSTCTL = USB_OTG_GRSTCTL_RXFFLSH;
-  USB_WAIT_RET_BOOL((USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_RXFFLSH) ==
-                    USB_OTG_GRSTCTL_RXFFLSH);
-  return true;
-}
-#endif
 
 //#define USB_PKTBUF ((uint32_t)0x40006000)
 #define USB_TX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8  )*2))
@@ -365,37 +337,95 @@ static void usb_reset()
   USB->DADDR = USB_DADDR_EF; // enable function
 }
 
-extern void usb_rx(const uint8_t ep, 
-                   const uint8_t *data, 
-                   const uint8_t len) __attribute__((weak));
-
-void usb_rx_internal(const uint8_t ep, const uint8_t *data, const uint8_t len)
+static void usb_set_rx_status(const uint32_t ep, const uint32_t status)
 {
-#if 0
-  if (ep >= 4)
-    return; // adios amigo
-  USB_OUTEP(ep)->DOEPTSIZ = (1 << 19) | 64; // buffer one full-length packet
-  USB_OUTEP(ep)->DOEPCTL |= USB_OTG_DOEPCTL_CNAK  | // clear nak to allow more
-                            USB_OTG_DOEPCTL_EPENA ; // re-enable RX endpoint
-  if (usb_rx)
-    usb_rx(ep, data, len);
-#endif
+  uint32_t toggle_mask = USB_EP_CTR_RX | USB_EP_CTR_TX | ep;
+  volatile uint16_t *epr = NULL;
+  if (ep == 0)
+  {
+    epr = &USB->EP0R;
+    toggle_mask |= USB_EP_CONTROL;
+  }
+  if (!epr)
+  {
+    printf("woah! unknown EP: %d\r\n", (int)ep);
+    while (1) { } // IT'S A TRAP!!!
+  }
+  if (((*epr) & USB_EP0R_STAT_RX_0) != (status & 0x1))
+    toggle_mask |= USB_EP0R_STAT_RX_0;
+  if (((*epr) & USB_EP0R_STAT_RX_1) != (status & 0x2))
+    toggle_mask |= USB_EP0R_STAT_RX_1;
+  *epr = toggle_mask;
+}
+
+static void usb_set_tx_status(const uint32_t ep, const uint32_t status)
+{
+  uint32_t toggle_mask = USB_EP_CTR_RX | USB_EP_CTR_TX | ep;
+  volatile uint16_t *epr = NULL;
+  if (ep == 0)
+  {
+    epr = &USB->EP0R;
+    toggle_mask |= USB_EP_CONTROL;
+  }
+  if (!epr)
+  {
+    printf("woah! unknown EP: %d\r\n", (int)ep);
+    while (1) { } // IT'S A TRAP!!!
+  }
+  if (((*epr) & USB_EP0R_STAT_TX_0) != (status & 0x1))
+    toggle_mask |= USB_EP0R_STAT_TX_0;
+  if (((*epr) & USB_EP0R_STAT_TX_1) != (status & 0x2))
+    toggle_mask |= USB_EP0R_STAT_TX_1;
+  *epr = toggle_mask;
 }
 
 bool usb_tx(const uint8_t ep, const uint8_t *payload, const uint8_t payload_len)
 {
-#if 0
-  if (ep >= 4)
+  if (payload_len == 0)
+  {
+    printf("can't tx 0 bytes!\r\n");
     return false;
+  }
+  //printf("usb tx %d bytes\r\n", payload_len);
   if (ep != 0 && !g_usb_config_complete)
+  {
+    printf("usb can't tx on EP%d before enumeration\r\n", ep);
     return false; // can't transmit yet
-  USB_INEP(ep)->DIEPTSIZ = (1 << 19) | payload_len; // set outbound txlen
-  USB_INEP(ep)->DIEPCTL  |= USB_OTG_DIEPCTL_EPENA | // enable endpoint
-                            USB_OTG_DIEPCTL_CNAK  ; // clear NAK bit
-  uint32_t *fifo = USB_FIFO(ep); // memory-mapped magic...
-  for (int word_idx = 0; word_idx < (payload_len + 3) / 4; word_idx++)
-    *fifo = *((uint32_t *)&payload[word_idx * 4]); // abomination
-#endif
+  }
+  uint32_t *usb_tx_sram = NULL;
+  //volatile uint16_t *epr = NULL;
+  if (ep == 0)
+  {
+    usb_tx_sram = (uint32_t *)(USB_PMAADDR + 2 * USB_EP0_TX_BUF);
+    //epr = &USB->EP0R;
+  }
+  if (usb_tx_sram == NULL)
+  {
+    printf("usb can't tx on EP%d\r\n", ep);
+    return false;
+  }
+  for (int i = 0; i < payload_len/2 && i < 32; i++)
+  {
+    // todo: care about non-even length transactions
+    *usb_tx_sram = *((uint16_t *)&payload[i*2]);
+    usb_tx_sram++;
+  }
+  *USB_TX_CNT(ep) = payload_len;
+  // now toggle the TX bits to indicate that this EP is in valid-tx state
+  usb_set_tx_status(ep, 0x3);
+
+  /*
+  uint32_t toggle_mask = USB_EP_CTR_RX | USB_EP_CTR_TX | ep;
+  if (ep == 0) // assumes that all EP other than EP0 are bulk
+    toggle_mask |= USB_EP_CONTROL;
+  
+  if (!((*epr) & USB_EP0R_STAT_TX_0))
+    toggle_mask |= USB_EP0R_STAT_TX_0;
+  if (!((*epr) & USB_EP0R_STAT_TX_1))
+    toggle_mask |= USB_EP0R_STAT_TX_1;
+  *epr = toggle_mask;
+  */
+  //printf("set epr to 0x%04x\r\n", *epr);
   return true;
 }
 
@@ -411,6 +441,8 @@ bool usb_txf_avail(const uint8_t ep, const uint8_t nbytes)
 
 bool usb_tx_stall(const uint8_t ep)
 {
+  printf("usb tx stall\r\n");
+  usb_set_tx_status(ep, 0x1);
 #if 0
   if (ep >= 4)
     return false; // adios amigo
@@ -419,119 +451,87 @@ bool usb_tx_stall(const uint8_t ep)
   return true;
 }
 
-bool usb_setup_rx(uint8_t *buf, const uint32_t len)
-{
-#if 0
-  const uint8_t  request_type = buf[0];
-  const uint8_t  request = buf[1];
-  const uint16_t request_value = buf[2] | ((uint16_t)buf[3] << 8);
-  const uint16_t request_len   = buf[6] | ((uint16_t)buf[7] << 8);
-  //printf("setup rx type 0x%02x request 0x%02x\r\n", request_type, request);
-  if (request_type == 0x0 && request == 0x5) // set address
-  {
-    const uint16_t addr = buf[2];
-    g_usbd->DCFG |= (addr << 4);
-    usb_tx(0, NULL, 0);
-    printf("set addr %d\r\n", addr);
-    return true;
-    //return usb_tx(0, NULL, 0); // send an empty status packet back
-  }
-  else if (request_type == 0x80 && request == 0x0) // get status
-  {
-    uint8_t status[2] = { 0, 0 };
-    return usb_tx(0, status, sizeof(status)); // send an empty status packet back
-  }
-  else if (request_type == 0x80 && request == 0x6) // get descriptor
-  {
-    uint8_t *pdesc = NULL;
-    uint8_t desc_len = 0;
-    //printf("desc req val = 0x%04x\r\n", (unsigned)request_value);
-    if (request_value == 0x0100) // request device descriptor
-    {
-      pdesc = g_usb_device_descriptor;
-      desc_len = sizeof(g_usb_device_descriptor);
-    }
-    else if (request_value == 0x0200) // request configuration descriptor
-    {
-      pdesc = (uint8_t *)&g_usb_config_desc;
-      desc_len = g_usb_config_desc.total_length;
-    }
-    if (pdesc)
-    {
-      int write_len = request_len < desc_len ? request_len : desc_len;
-      // todo: loop until done sending it, if needed
-      return usb_tx(0, pdesc, write_len);
-    }
-    else
-      return usb_tx_stall(0); // we don't know how to handle this request
-  }
-  else if (request_type == 0 && request == 0x9) // set configuration
-  {
-    if (request_value != 0)
-      return usb_tx_stall(0);
-    // enable the IN endpoint for configuration #0
-    //USB_INEP(1)->DIEPTSIZ = (1 << 19) | payload_len; // set outbound pkt size
-    //USB_INEP(1)->DIEPINT  = USB_OTG_DIEPINT_TXFE; // interrupt on TXF empty
-    USB_INEP(1)->DIEPINT  = USB_OTG_DIEPINT_XFRC; // interrupt on TXF empty
-    USB_INEP(1)->DIEPTSIZ = 64; 
-    USB_INEP(1)->DIEPCTL = USB_OTG_DIEPCTL_SNAK    | // set NAK bit
-                           (1 << 22)               | // use txfifo #1
-                           USB_OTG_DIEPCTL_EPTYP_1 | // bulk transfer
-                           USB_OTG_DIEPCTL_USBAEP  | // active EP (always 1)
-                           USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
-                           64; // max packet size
-
-    // enable the OUT endpoint for configuration #0
-    USB_OUTEP(2)->DOEPTSIZ = (1 << 19) | 64; // buffer one full-length packet
-    USB_OUTEP(2)->DOEPCTL = USB_OTG_DOEPCTL_EPENA  | // enable endpoint
-                            USB_OTG_DOEPCTL_USBAEP | // active endpoint (always 1)
-                            USB_OTG_DOEPCTL_CNAK   | // clear NAK bit
-                            USB_OTG_DOEPCTL_SD0PID_SEVNFRM |
-                            USB_OTG_DOEPCTL_EPTYP_1 |
-                            64; // max packet size = 64 bytes
-    g_usbd->DAINTMSK = 0x40002; // OUT2 and IN1 IRQ . used to be 0x10001
-    // done configuring endpoints; now we'll send an empty status packet back
-    g_usb_config_complete = true;
-    uint8_t bogus[64] = {0};
-    usb_tx(1, bogus, sizeof(bogus)); // kick-start the FIFO low interrupt
-    return usb_tx(0, NULL, 0); 
-  }
-  printf("unhandled usb_setup_rx len %u\r\n  ", (unsigned)len);
-  for (int i = 0; i < len; i++)
-    printf("%02x ", buf[i]);
-  printf("\r\n");
-#endif
-  return false;
-}
-
 void usb_hp_can1_tx_vector()
 {
   printf("usb HP vector\r\n");
+}
+
+static void usb_txrx_complete()
+{
+  // transfer_complete
+  //printf("CTR\r\n");
+  // check our endpoints to see which one triggered the interrupt
+  static volatile uint16_t *eps[1] = { &USB->EP0R };
+  for (int ep = 0; ep < 1; ep++)
+  {
+    uint16_t epr = *eps[ep];
+    if (epr & USB_EP_CTR_RX) // rx complete
+    {
+      uint16_t nrx = (*USB_RX_CNT(ep)) & 0x3f;
+      static uint16_t rxbuf[32] = {0};
+      uint32_t *usb_rx_sram = NULL;
+      if (ep == 0)
+        usb_rx_sram = (uint32_t *)(USB_PMAADDR + 2 * USB_EP0_RX_BUF);
+      for (int i = 0; i < nrx/2 && i < sizeof(rxbuf)/2; i++)
+      {
+        // todo: care about non-even numbers of RX bytes
+        rxbuf[i] = *usb_rx_sram;
+        usb_rx_sram++;
+      }
+      bool is_status = false;
+      if (ep == 0 && USB->EP0R & USB_EP_SETUP)
+      {
+        usb_rx_setup((uint8_t *)rxbuf, nrx);
+        is_status = true;
+      }
+      else
+      {
+        // call user-facing EP RX
+        printf("  EP %d rx %d bytes\r\n", ep, nrx);
+      }
+      *eps[ep] &= ~USB_EP_CTR_RX; // clear the RX-complete flag
+      // now toggle the TX bits to indicate that this EP is in valid-tx state
+      // todo: be more sophisticated with the invariant/toggle bit handling
+      if (!is_status)
+      {
+        usb_set_rx_status(ep, 0x3);
+        /*
+        if (!(epr & USB_EP0R_STAT_RX_0))
+          *eps[ep] |= USB_EP0R_STAT_RX_0;
+        if (!(epr & USB_EP0R_STAT_RX_1))
+          *eps[ep] |= USB_EP0R_STAT_RX_1;
+        */
+      }
+      else
+      {
+        usb_set_rx_status(ep, 0x1);
+        if (!(epr & USB_EP0R_STAT_RX_0))
+          *eps[ep] |= USB_EP0R_STAT_RX_0;
+      }
+    }
+    if (epr & USB_EP_CTR_TX) // tx complete
+    {
+      *eps[ep] &= ~USB_EP_CTR_TX; // clear the TX-complete flag
+      printf("  txc ep %d\r\n", ep);
+      if (ep == 0)
+        usb_set_rx_status(ep, 0x3);
+    }
+  }
 }
 
 void usb_lp_can1_rx0_vector()
 {
   //printf("  ep0r = 0x%08x\r\n", USB->EP0R);
   //printf("  istr = %08x\r\n", USB->ISTR);
-  if (USB->ISTR & USB_ISTR_RESET)
+  if (USB->ISTR & USB_ISTR_CTR)
+    usb_txrx_complete();
+  else if (USB->ISTR & USB_ISTR_RESET)
     usb_reset();
   else if (USB->ISTR & USB_ISTR_WKUP)
   {
     printf("WKUP\r\n");
     USB->ISTR &= ~USB_ISTR_WKUP;
   }
-#if 0
-  else if (USB->ISTR & USB_ISTR_SUSP)
-  {
-    //printf("SUS\r\n");
-    USB->ISTR &= ~USB_ISTR_SUSP;
-  }
-  else if (USB->ISTR & USB_ISTR_ERR)
-  {
-    //printf("ERR\r\n");
-    USB->ISTR &= ~USB_ISTR_ERR;
-  }
-#endif
   else
   {
     printf("unknown usb reset vector cause! usb istr = 0x%08x\r\n", USB->ISTR);
@@ -690,6 +690,141 @@ void otg_fs_vector()
   {
     printf("unhandled gintsts = %08x\r\n", (unsigned)USB_OTG_FS->GINTSTS);
   }
+}
+#endif
+#if 0
+static void usb_rx_ep0(const uint8_t *data, const uint8_t len)
+{
+  /*
+  printf("  EP0 rx %d bytes:\r\n", len);
+  for (int i = 0; i < len; i++)
+    printf("    %d: 0x%02x\r\n", i, data[i]);
+  */
+  if (USB->EP0R & USB_EP_SETUP)
+    usb_rx_setup(data, len);
+}
+#endif
+
+//static USB_TypeDef * const g_usbd = 
+//  (USB_TypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + 
+//                            USB_OTG_DEVICE_BASE);
+#if 0
+#define USB_INEP(i)  ((USB_OTG_INEndpointTypeDef *)(( uint32_t)USB_OTG_FS_PERIPH_BASE + USB_OTG_IN_ENDPOINT_BASE + (i)*USB_OTG_EP_REG_SIZE))        
+#define USB_OUTEP(i) ((USB_OTG_OUTEndpointTypeDef *)((uint32_t)USB_OTG_FS_PERIPH_BASE + USB_OTG_OUT_ENDPOINT_BASE + (i)*USB_OTG_EP_REG_SIZE))
+#define USB_WAIT_RET_BOOL(cond) \
+  do { \
+    int count = 0; \
+    do { \
+      if ( ++count > USB_TIMEOUT ) \
+        return false; \
+    } while (cond); \
+  } while (0)
+#define USB_FIFO_BASE ((uint32_t *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_FIFO_BASE))
+#define USB_FIFO(i) ((uint32_t *)(USB_FIFO_BASE + 1024 * i))
+#endif
+#if 0
+bool usb_flush_txfifo(uint32_t fifo)
+{
+  USB_OTG_FS->GRSTCTL = USB_OTG_GRSTCTL_TXFFLSH | (fifo << 5);
+  USB_WAIT_RET_BOOL((USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_TXFFLSH) == 
+                    USB_OTG_GRSTCTL_TXFFLSH);
+  return true;
+}
+
+bool usb_flush_rxfifo()
+{
+  USB_OTG_FS->GRSTCTL = USB_OTG_GRSTCTL_RXFFLSH;
+  USB_WAIT_RET_BOOL((USB_OTG_FS->GRSTCTL & USB_OTG_GRSTCTL_RXFFLSH) ==
+                    USB_OTG_GRSTCTL_RXFFLSH);
+  return true;
+}
+#endif
+
+#if 0
+bool usb_setup_rx(const uint8_t *buf, const uint32_t len)
+{
+  const uint8_t  request_type = buf[0];
+  const uint8_t  request = buf[1];
+  const uint16_t request_value = buf[2] | ((uint16_t)buf[3] << 8);
+  const uint16_t request_len   = buf[6] | ((uint16_t)buf[7] << 8);
+  printf("setup rx type=0x%02x request=0x%02x request_value=0x%02x len=%d\r\n",
+         request_type, request, request_value, request_len);
+#if 0
+  if (request_type == 0x0 && request == 0x5) // set address
+  {
+    const uint16_t addr = buf[2];
+    g_usbd->DCFG |= (addr << 4);
+    usb_tx(0, NULL, 0);
+    printf("set addr %d\r\n", addr);
+    return true;
+    //return usb_tx(0, NULL, 0); // send an empty status packet back
+  }
+  else if (request_type == 0x80 && request == 0x0) // get status
+  {
+    uint8_t status[2] = { 0, 0 };
+    return usb_tx(0, status, sizeof(status)); // send an empty status packet back
+  }
+  else if (request_type == 0x80 && request == 0x6) // get descriptor
+  {
+    uint8_t *pdesc = NULL;
+    uint8_t desc_len = 0;
+    //printf("desc req val = 0x%04x\r\n", (unsigned)request_value);
+    if (request_value == 0x0100) // request device descriptor
+    {
+      pdesc = g_usb_device_descriptor;
+      desc_len = sizeof(g_usb_device_descriptor);
+    }
+    else if (request_value == 0x0200) // request configuration descriptor
+    {
+      pdesc = (uint8_t *)&g_usb_config_desc;
+      desc_len = g_usb_config_desc.total_length;
+    }
+    if (pdesc)
+    {
+      int write_len = request_len < desc_len ? request_len : desc_len;
+      // todo: loop until done sending it, if needed
+      return usb_tx(0, pdesc, write_len);
+    }
+    else
+      return usb_tx_stall(0); // we don't know how to handle this request
+  }
+  else if (request_type == 0 && request == 0x9) // set configuration
+  {
+    if (request_value != 0)
+      return usb_tx_stall(0);
+    // enable the IN endpoint for configuration #0
+    //USB_INEP(1)->DIEPTSIZ = (1 << 19) | payload_len; // set outbound pkt size
+    //USB_INEP(1)->DIEPINT  = USB_OTG_DIEPINT_TXFE; // interrupt on TXF empty
+    USB_INEP(1)->DIEPINT  = USB_OTG_DIEPINT_XFRC; // interrupt on TXF empty
+    USB_INEP(1)->DIEPTSIZ = 64; 
+    USB_INEP(1)->DIEPCTL = USB_OTG_DIEPCTL_SNAK    | // set NAK bit
+                           (1 << 22)               | // use txfifo #1
+                           USB_OTG_DIEPCTL_EPTYP_1 | // bulk transfer
+                           USB_OTG_DIEPCTL_USBAEP  | // active EP (always 1)
+                           USB_OTG_DIEPCTL_SD0PID_SEVNFRM |
+                           64; // max packet size
+
+    // enable the OUT endpoint for configuration #0
+    USB_OUTEP(2)->DOEPTSIZ = (1 << 19) | 64; // buffer one full-length packet
+    USB_OUTEP(2)->DOEPCTL = USB_OTG_DOEPCTL_EPENA  | // enable endpoint
+                            USB_OTG_DOEPCTL_USBAEP | // active endpoint (always 1)
+                            USB_OTG_DOEPCTL_CNAK   | // clear NAK bit
+                            USB_OTG_DOEPCTL_SD0PID_SEVNFRM |
+                            USB_OTG_DOEPCTL_EPTYP_1 |
+                            64; // max packet size = 64 bytes
+    g_usbd->DAINTMSK = 0x40002; // OUT2 and IN1 IRQ . used to be 0x10001
+    // done configuring endpoints; now we'll send an empty status packet back
+    g_usb_config_complete = true;
+    uint8_t bogus[64] = {0};
+    usb_tx(1, bogus, sizeof(bogus)); // kick-start the FIFO low interrupt
+    return usb_tx(0, NULL, 0); 
+  }
+  printf("unhandled usb_setup_rx len %u\r\n  ", (unsigned)len);
+  for (int i = 0; i < len; i++)
+    printf("%02x ", buf[i]);
+  printf("\r\n");
+#endif
+  return false;
 }
 #endif
 
