@@ -52,7 +52,7 @@ gdb_server: $(OUT).bin
 	$(OPENOCD) -c "init; halt"
 
 gdb: $(OUT).bin
-	$(TC)gdb $(OUT) -x $(ROOT)/common/stm32/gdb_init_commands
+	$(TC)gdb $(OUT) -x ../common/gdb_init_commands
 
 reset:
 	$(OPENOCD) -c "init; reset halt; sleep 100; halt; sleep 100; reset run; sleep 100; shutdown"

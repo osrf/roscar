@@ -6,11 +6,10 @@
 #include "pin.h"
 #include <string.h>
 
-extern void usb_ep1_txf_empty() __attribute__((weak));
-extern void usb_ep1_tx_complete() __attribute__((weak));
 static void usb_set_rx_status(const uint32_t ep, const uint32_t status);
 static void usb_set_tx_status(const uint32_t ep, const uint32_t status);
-
+extern void usb_sof() __attribute__((weak));
+extern void usb_rx(const uint8_t ep, const uint8_t *data, const uint8_t len) __attribute__((weak));
 
 static bool g_usb_config_complete = false;
 #define PORTA_USB_DM_PIN 11
@@ -189,6 +188,68 @@ static const char *g_usb_product_str = "roscar";
 
 static uint8_t g_usb_setup_pkt_buf[256];
 
+
+//#define USB_PKTBUF ((uint32_t)0x40006000)
+#define USB_TX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8  )*2))
+#define USB_TX_CNT(ep)  ((uint32_t *)(USB_PMAADDR + (ep*8+2)*2))
+#define USB_RX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8+4)*2))
+#define USB_RX_CNT(ep)  ((uint32_t *)(USB_PMAADDR + (ep*8+6)*2))
+
+// we'll have 4 descriptors: EP0 control TX/RX, EP1 bulk TX, EP2 bulk RX
+// so our descriptor table will be 8*4 = 0x20 bytes long
+// we'll start putting 64-byte buffers after that
+#define USB_EP0_TX_BUF 0x020
+#define USB_EP0_RX_BUF 0x060
+#define USB_EP1_TX_BUF 0x0c0
+#define USB_EP2_RX_BUF 0x100
+
+static void usb_reset();
+
+/////////////////////////////////////////////////////////////////////////////
+
+void usb_init()
+{
+  RCC->APB1RSTR |= RCC_APB1RSTR_USBRST; // reset the USB subsystem
+  RCC->APB2ENR |= RCC_APB2ENR_AFIOEN; // power up the AF i/o machinery
+  RCC->APB1RSTR &= ~RCC_APB1RSTR_USBRST; // de-assert USB core reset
+  // force disconnect from host OS
+  pin_set_output(GPIOC, PORTC_USB_DISCONNECT_PIN, 1); // force disconnect
+  delay_ms(50); // wait a bit, so the OS notices we're gone
+  pin_set_output(GPIOC, PORTC_USB_DISCONNECT_PIN, 0); // force reconnect
+  pin_set_alternate_function(GPIOA, PORTA_USB_DM_PIN, false, PIN_PULL_UP);
+  pin_set_alternate_function(GPIOA, PORTA_USB_DP_PIN, false, PIN_PULL_UP);
+  RCC->APB1ENR |= RCC_APB1ENR_USBEN; // turn on USB OTG FS clock gate
+  USB->CNTR = USB_CNTR_FRES; // assert USB reset and power-up analog stuff
+  delay_us(2); // wait at least 1us, according to datasheet
+  USB->CNTR = 0; // clear USB reset
+  USB->ISTR = 0; // clear any pending interrupts
+  USB->BTABLE = 0;
+  usb_reset();
+  USB->CNTR |= USB_CNTR_CTRM    |
+               USB_CNTR_RESETM  |
+               USB_CNTR_PMAOVRM |
+               USB_CNTR_WKUPM   |
+               USB_CNTR_SOFM    ;
+  // enable USB interrupts
+  NVIC_SetPriority(USB_HP_CAN1_TX_IRQn, 1);
+  NVIC_EnableIRQ(USB_HP_CAN1_TX_IRQn);
+  NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 1);
+  NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
+}
+
+static void usb_reset()
+{
+  printf("URESET\r\n");
+  USB->ISTR &= ~USB_ISTR_RESET;
+  *(USB_TX_ADDR(0)) = USB_EP0_TX_BUF;
+  *(USB_TX_CNT(0)) = 0;
+  *(USB_RX_ADDR(0)) = USB_EP0_RX_BUF;
+  *(USB_RX_CNT(0))  = 0x8400; // this rx buffer is 64 bytes
+  usb_set_rx_status(0, 0x3); // enabled for reception
+  usb_set_tx_status(0, 0x2); // respond to TX requests with NAK
+  USB->DADDR = USB_DADDR_EF; // enable function
+}
+
 ////////////////////////////////////////////////////////////////
 
 uint8_t usb_stuff_desc_string(const char *str)
@@ -255,12 +316,9 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
     }
     else
     {
-      //printf("TRAP!!! unknown descriptor request: 0x%04x\r\n", req_val);
-      //while(1) { } // IT'S A TRAP
-      //usb_tx_stall(0);
-      usb_set_tx_status(0, 0x1);
-      usb_set_rx_status(0, 0x3);
-      //printf("unknown descriptor 0x%04x requested\r\n", req_val);
+      // if we get here, we don't know the descriptor. send STALL for failure.
+      usb_set_tx_status(0, 0x1); // tx stall
+      usb_set_rx_status(0, 0x3); // rx valid
     }
   }
   else if (req_type == 0x00 && req == 0x05) // set address
@@ -270,8 +328,20 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
   }
   else if (req_type == 0x00 && req == 0x09) // set configuration
   {
-    // todo: call into mac-specific function to set up endpoints, etc.
+    // we only have one configuration, so we don't even look at req_val here.
+    *(USB_TX_ADDR(1)) = USB_EP1_TX_BUF;
+    *(USB_TX_CNT(1)) = 0;
+    *(USB_RX_ADDR(1)) = 0; // this is a TX (IN) endpoint; this is nonsense.
+    *(USB_RX_CNT(1)) = 0;  // this is a TX (IN) endpoint; this is nonsense.
+    usb_set_tx_status(1, 0x02); // set EP1 to NAK
+    *(USB_TX_ADDR(2)) = 0; // nonsense, since this is a RX (OUT) endpoint
+    *(USB_TX_CNT(2)) = 0;  // nonsense, since this is a RX (OUT) endpoint
+    *(USB_RX_ADDR(2)) = USB_EP2_RX_BUF;
+    *(USB_RX_CNT(2)) = 0x8400; // rx buffer is 64 bytes
+    usb_set_rx_status(2, 0x3); // EP2 is now ready to receive
+    // done configuring the endpoints; tell the host we're ready to rock now.
     usb_tx(0, NULL, 0);
+    g_usb_config_complete = true;
   }
   else
   {
@@ -280,69 +350,6 @@ void usb_rx_setup(const uint8_t *buf, const unsigned len)
     printf("trapping...\r\n");
     while(1) { } // IT'S A TRAP
   }
-}
-
-//#define USB_PKTBUF ((uint32_t)0x40006000)
-#define USB_TX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8  )*2))
-#define USB_TX_CNT(ep)  ((uint32_t *)(USB_PMAADDR + (ep*8+2)*2))
-#define USB_RX_ADDR(ep) ((uint32_t *)(USB_PMAADDR + (ep*8+4)*2))
-#define USB_RX_CNT(ep)  ((uint32_t *)(USB_PMAADDR + (ep*8+6)*2))
-
-// we'll have 4 descriptors: EP0 control TX/RX, EP1 bulk RX, EP2 bulk TX
-// so our descriptor table will be 8*4 = 0x20 bytes long
-// we'll start putting 64-byte buffers after that
-#define USB_EP0_TX_BUF 0x20
-#define USB_EP0_RX_BUF 0x60
-#define USB_EP1_RX_BUF 0xc0
-#define USB_EP2_TX_BUF 0x100
-
-static void usb_reset();
-
-void usb_init()
-{
-  RCC->APB1RSTR |= RCC_APB1RSTR_USBRST; // reset the USB subsystem
-  RCC->APB2ENR |= RCC_APB2ENR_AFIOEN; // power up the AF i/o machinery
-  RCC->APB1RSTR &= ~RCC_APB1RSTR_USBRST; // de-assert USB core reset
-
-  // force disconnect from host OS
-  pin_set_output(GPIOC, PORTC_USB_DISCONNECT_PIN, 1);
-  delay_ms(50);
-  // connect (activate pullup on usb line)
-  pin_set_output(GPIOC, PORTC_USB_DISCONNECT_PIN, 0);
-  pin_set_alternate_function(GPIOA, PORTA_USB_DM_PIN, false, PIN_PULL_UP);
-  pin_set_alternate_function(GPIOA, PORTA_USB_DP_PIN, false, PIN_PULL_UP);
-  RCC->APB1ENR |= RCC_APB1ENR_USBEN; // turn on USB OTG FS clock gate
-  USB->CNTR = USB_CNTR_FRES; // assert USB reset and power-up analog stuff
-  delay_us(2); // wait at least 1us, according to datasheet
-  USB->CNTR = 0; // clear USB reset
-  USB->ISTR = 0; // clear any pending interrupts
-  USB->BTABLE = 0;
-  usb_reset();
-  USB->CNTR |= USB_CNTR_CTRM    |
-               USB_CNTR_RESETM  |
-               USB_CNTR_PMAOVRM |
-               USB_CNTR_WKUPM   ;
-               //USB_CNTR_SUSPM   |
-               //USB_CNTR_ERRM    ;
-  // enable USB interrupts
-  NVIC_SetPriority(USB_HP_CAN1_TX_IRQn, 1);
-  NVIC_EnableIRQ(USB_HP_CAN1_TX_IRQn);
-  NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 1);
-  NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
-  // wait for reset interrupt
-}
-
-static void usb_reset()
-{
-  printf("URESET\r\n");
-  USB->ISTR &= ~USB_ISTR_RESET;
-  *(USB_TX_ADDR(0)) = USB_EP0_TX_BUF;
-  *(USB_TX_CNT(0)) = 0;
-  *(USB_RX_ADDR(0)) = USB_EP0_RX_BUF;
-  *(USB_RX_CNT(0))  = 0x8400; // this rx buffer is 64 bytes
-  usb_set_rx_status(0, 0x3); // enabled for reception
-  usb_set_tx_status(0, 0x2); // respond to TX requests with NAK
-  USB->DADDR = USB_DADDR_EF; // enable function
 }
 
 static void usb_set_rx_status(const uint32_t ep, const uint32_t status)
@@ -354,6 +361,8 @@ static void usb_set_rx_status(const uint32_t ep, const uint32_t status)
     epr = &USB->EP0R;
     toggle_mask |= USB_EP_CONTROL;
   }
+  else if (ep == 2)
+    epr = &USB->EP2R;
   if (!epr)
   {
     printf("woah! unknown EP: %d\r\n", (int)ep);
@@ -375,6 +384,8 @@ static void usb_set_tx_status(const uint32_t ep, const uint32_t status)
     epr = &USB->EP0R;
     toggle_mask |= USB_EP_CONTROL;
   }
+  else if (ep == 1)
+    epr = &USB->EP1R;
   if (!epr)
   {
     printf("woah! unknown EP: %d\r\n", (int)ep);
@@ -389,25 +400,16 @@ static void usb_set_tx_status(const uint32_t ep, const uint32_t status)
 
 bool usb_tx(const uint8_t ep, const uint8_t *payload, const uint8_t payload_len)
 {
-  //printf("usb tx %d bytes\r\n", payload_len);
-  //volatile uint16_t ep0r = USB->EP0R;
-  //printf("  tx start ep0r = 0x%04x\r\n", ep0r);
-
-  /*
-  if (payload_len == 0)
-  {
-    printf("can't tx 0 bytes!\r\n");
-    return false;
-  }
-  */
   if (ep != 0 && !g_usb_config_complete)
   {
-    printf("usb can't tx on EP%d before enumeration\r\n", ep);
+    //printf("usb can't tx on EP%d before enumeration\r\n", ep);
     return false; // can't transmit yet
   }
   uint32_t *usb_tx_sram = NULL;
   if (ep == 0)
     usb_tx_sram = (uint32_t *)(USB_PMAADDR + 2 * USB_EP0_TX_BUF);
+  else if (ep == 1)
+    usb_tx_sram = (uint32_t *)(USB_PMAADDR + 2 * USB_EP1_TX_BUF);
   if (usb_tx_sram == NULL)
   {
     printf("usb can't tx on EP%d\r\n", ep);
@@ -421,46 +423,14 @@ bool usb_tx(const uint8_t ep, const uint8_t *payload, const uint8_t payload_len)
   }
   *USB_TX_CNT(ep) = payload_len;
   usb_set_tx_status(ep, 0x3); // set TX state to VALID
-  //printf("  ep0r = 0x%04x\r\n", USB->EP0R);
-  //volatile uint16_t ep_reg = USB->EP0R;
-  //printf("  tx set epr to 0x%04x\r\n", ep_reg);
   return true;
-}
-
-bool usb_txf_avail(const uint8_t ep, const uint8_t nbytes)
-{
-#if 0
-  if (ep >= 4)
-    return false;
-  return USB_INEP(ep)->DTXFSTS >= nbytes / 4;
-#endif
-  return true;
-}
-
-bool usb_tx_stall(const uint8_t ep)
-{
-  //printf("usb tx stall\r\n");
-  usb_set_tx_status(ep, 0x1);
-#if 0
-  if (ep >= 4)
-    return false; // adios amigo
-  USB_INEP(ep)->DIEPCTL |= USB_OTG_DIEPCTL_STALL;
-#endif
-  return true;
-}
-
-void usb_hp_can1_tx_vector()
-{
-  printf("usb HP vector\r\n");
 }
 
 static void usb_txrx_complete()
 {
-  // transfer_complete
-  //printf("CTR\r\n");
   // check our endpoints to see which one triggered the interrupt
-  static volatile uint16_t *eps[1] = { &USB->EP0R };
-  for (int ep = 0; ep < 1; ep++)
+  static volatile uint16_t *eps[3] = { &USB->EP0R, &USB->EP1R, &USB->EP2R };
+  for (int ep = 0; ep < 3; ep++)
   {
     uint16_t epr = *eps[ep];
     if (epr & USB_EP_CTR_RX) // rx complete
@@ -470,21 +440,15 @@ static void usb_txrx_complete()
       uint32_t *usb_rx_sram = NULL;
       if (ep == 0)
         usb_rx_sram = (uint32_t *)(USB_PMAADDR + 2 * USB_EP0_RX_BUF);
+      else if (ep == 2)
+        usb_rx_sram = (uint32_t *)(USB_PMAADDR + 2 * USB_EP2_RX_BUF);
+
       for (int i = 0; i < nrx/2 && i < sizeof(rxbuf)/2; i++)
       {
         // todo: care about non-even numbers of RX bytes
         rxbuf[i] = *usb_rx_sram;
         usb_rx_sram++;
       }
-      /*
-      volatile uint16_t ep0r = USB->EP0R;
-      printf("rx ep0r = 0x%04x\r\n", ep0r);
-      *eps[ep] &= ~USB_EP_CTR_RX; // clear the RX-complete flag
-      {
-        volatile uint16_t ep0r = USB->EP0R;
-        printf("  rx after clear ep0r = 0x%04x\r\n", ep0r);
-      }
-      */
       if (ep == 0)
       {
         if (USB->EP0R & USB_EP_SETUP)
@@ -502,11 +466,12 @@ static void usb_txrx_complete()
       }
       else
       {
-        USB->EP0R = USB_EP_CTR_TX | // clear the RX flag, leave TX flag intact
-                    ep; // remember to save the endpoint address
+        *eps[ep] = USB_EP_CTR_TX | // clear the RX flag, leave TX flag intact
+                   ep; // remember to save the endpoint address
         usb_set_rx_status(ep, 0x3);
-        // call user-facing EP RX
-        printf("  EP %d rx %d bytes\r\n", ep, nrx);
+        if (usb_rx)
+          usb_rx(ep, (uint8_t *)rxbuf, nrx); // call user-facing EP RX handler
+        //printf("  EP %d rx %d bytes\r\n", ep, nrx);
       }
     }
     if (epr & USB_EP_CTR_TX) // tx complete
@@ -534,12 +499,18 @@ void usb_lp_can1_rx0_vector()
   //printf("  istr = %08x\r\n", USB->ISTR);
   if (USB->ISTR & USB_ISTR_CTR)
     usb_txrx_complete();
+  else if (USB->ISTR & USB_ISTR_SOF)
+  {
+    USB->ISTR &= ~USB_ISTR_SOF;
+    if (usb_sof)
+      usb_sof();
+  }
   else if (USB->ISTR & USB_ISTR_RESET)
     usb_reset();
   else if (USB->ISTR & USB_ISTR_WKUP)
   {
     printf("WKUP\r\n");
-    //USB->ISTR &= ~USB_ISTR_WKUP;
+    USB->ISTR &= ~USB_ISTR_WKUP;
   }
   else
   {
@@ -549,6 +520,11 @@ void usb_lp_can1_rx0_vector()
 }
 
 #if 0
+void usb_hp_can1_tx_vector()
+{
+  printf("usb HP vector\r\n");
+}
+
 void otg_fs_vector()
 {
   //printf("otg vect\r\n");
