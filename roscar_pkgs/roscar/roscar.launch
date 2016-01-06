@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="sick_tim" type="sick_tim551_2050001" name="sick_tim"/>
+  <node pkg="joy" type="joy_node" name="joy"/>
+  <!-- node pkg="roscar" type="roscar.py" name="roscar"/ -->
+</launch>
