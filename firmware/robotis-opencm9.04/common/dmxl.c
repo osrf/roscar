@@ -159,7 +159,7 @@ static void dmxl_process_byte(dmxl_chain_t *c, const uint8_t b)
     case DMXL_PARSER_STATE_CHECKSUM:
       if (((uint8_t)(~c->rx_csum)) == b)
       {
-        int dmxl_idx = c->polling_id - 1;
+        int dmxl_idx = c->polling_id;
         uint16_t angle = (c->rx_pkt[1] << 8) | c->rx_pkt[0];
         //int16_t vel = (c->rx_pkt[3] << 8) | c->rx_pkt[2];
         //int16_t load = (c->rx_pkt[5] << 8) | c->rx_pkt[4];
@@ -215,7 +215,7 @@ void dmxl_tick()
   bool start_poll = false;
   if (t - g_dmxl_last_poll_time > DMXL_POLL_INTERVAL_USEC)
   {
-    start_poll = true;
+    //start_poll = true;
     //printf("%d dmxl poll\r\n", (int)SYSTIME);
     if (g_dmxl_last_poll_time)
       g_dmxl_last_poll_time += DMXL_POLL_INTERVAL_USEC;

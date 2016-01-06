@@ -71,10 +71,14 @@ void blink(libusb_device_handle *h)
   while (!g_done)
   {
     usleep(500000);
-    tx_msg[0] = !tx_msg[0];
+    if (!tx_msg[4])
+      tx_msg[4] = 0x1;
+    else
+      tx_msg[4] = 0;
+
     uint8_t rx_msg[64] = {0};
     int nrx = 0;
-    int tx_rc = libusb_bulk_transfer(h, 0x02, tx_msg, 4, &nrx, 10);
+    int tx_rc = libusb_bulk_transfer(h, 0x02, tx_msg, 8, &nrx, 10);
     if (tx_rc == LIBUSB_ERROR_TIMEOUT)
     {
       printf("timeout\n");
@@ -87,6 +91,78 @@ void blink(libusb_device_handle *h)
       break;
     }
   }
+}
+
+bool dmxl_set_reg(libusb_device_handle *h, uint8_t id, 
+                  uint8_t reg_idx, uint8_t reg_val)
+{
+  uint8_t tx_msg[64] = {0};
+  tx_msg[0] = 2; // set register
+  tx_msg[4] = id;
+  tx_msg[5] = reg_idx;
+  tx_msg[6] = reg_val;
+  uint8_t rx_msg[64] = {0};
+  int nrx = 0;
+  int tx_rc = libusb_bulk_transfer(h, 0x02, tx_msg, 8, &nrx, 10);
+  if (tx_rc == LIBUSB_ERROR_TIMEOUT)
+  {
+    printf("timeout\n");
+    return false;
+  }
+  else if (tx_rc != 0)
+  {
+    printf("tx err code: %d\n", tx_rc);
+    printf("errno: %d = %s\n", errno, strerror(errno));
+    return false;
+  }
+  return true;
+}
+
+void spin(libusb_device_handle *h)
+{
+  FILE *f = fopen("log.txt", "w");
+  uint8_t tx_msg[64] = {0};
+  tx_msg[0] = 1;
+  dmxl_set_reg(h, 1, 0x18, 1); // enable torque
+  dmxl_set_reg(h, 2, 0x18, 1); // enable torque
+  int loop_count = 0;
+  while (!g_done)
+  {
+    usleep(50000);
+    if (++loop_count > 10)
+    {
+      printf("toggle wheel\n");
+      if (tx_msg[4] != 0)
+      {
+        tx_msg[4] = 0x10;
+        tx_msg[6] = 0x00;
+        loop_count = 0;
+      }
+      else
+      {
+        tx_msg[4] = 0x00;
+        tx_msg[6] = 0x10;
+        loop_count = 0;
+      }
+    }
+
+    uint8_t rx_msg[64] = {0};
+    int nrx = 0;
+    int tx_rc = libusb_bulk_transfer(h, 0x02, tx_msg, 8, &nrx, 10);
+    if (tx_rc == LIBUSB_ERROR_TIMEOUT)
+    {
+      printf("timeout\n");
+      continue;
+    }
+    else if (tx_rc != 0)
+    {
+      printf("tx err code: %d\n", tx_rc);
+      printf("errno: %d = %s\n", errno, strerror(errno));
+      break;
+    }
+  }
+  dmxl_set_reg(h, 1, 0x18, 0); // disable torque
+  dmxl_set_reg(h, 2, 0x18, 0); // disable torque
 }
 
 int main(int argc, char **argv)
@@ -106,6 +182,8 @@ int main(int argc, char **argv)
     stream(h);
   else if (!strcmp(cmd, "blink"))
     blink(h);
+  else if (!strcmp(cmd, "spin"))
+    spin(h);
   libusb_exit(NULL);
   return 0;
 }
