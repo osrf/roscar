@@ -84,6 +84,8 @@ class RosCar:
         if self.modes[self.mode_idx] == 'teleop':
             self.last_teleop_cmd = cmd
             self.last_teleop_time = rospy.Time.now()
+        else:
+            self.last_teleop_cmd = None
 
     def go(self):
         rospy.spin()
