@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <libusb-1.0/libusb.h>
 #include <errno.h>
+#include <ros/ros.h>
+#include <geometry_msgs/Twist.h>
 
 #define VENDOR_ID  0xf055
 #define PRODUCT_ID 0x0002
@@ -165,6 +167,66 @@ void spin(libusb_device_handle *h)
   dmxl_set_reg(h, 2, 0x18, 0); // disable torque
 }
 
+void cmd_vel_cb(const geometry_msgs::Twist::ConstPtr &msg)
+{
+  double x  = msg->linear.x;
+  double th = msg->angular.z;
+  printf("rx %.2f %.2f\n", x, th);
+  /*
+  while (!g_done)
+  {
+    ros::spin_once();
+    usleep(50000);
+    if (++loop_count > 20)
+    {
+      printf("toggle wheel\n");
+      if (tx_msg[4] == 0)
+      {
+        tx_msg[4] = 0x20;
+        tx_msg[6] = 0x00;
+        loop_count = 0;
+      }
+      else
+      {
+        tx_msg[4] = 0x00;
+        tx_msg[6] = 0x20;
+        loop_count = 0;
+      }
+    }
+
+    uint8_t rx_msg[64] = {0};
+    int nrx = 0;
+    int tx_rc = libusb_bulk_transfer(h, 0x02, tx_msg, 8, &nrx, 10);
+    if (tx_rc == LIBUSB_ERROR_TIMEOUT)
+    {
+      printf("timeout\n");
+      continue;
+    }
+    else if (tx_rc != 0)
+    {
+      printf("tx err code: %d\n", tx_rc);
+      printf("errno: %d = %s\n", errno, strerror(errno));
+      break;
+    }
+  }
+  */
+}
+
+void roscar_listen(libusb_device_handle *h)
+{
+  uint8_t tx_msg[64] = {0};
+  tx_msg[0] = 1;
+  dmxl_set_reg(h, 1, 0x18, 1); // enable torque
+  dmxl_set_reg(h, 2, 0x18, 1); // enable torque
+  int loop_count = 0;
+  ros::NodeHandle nh;
+  ros::Subscriber sub = nh.subscribe("cmd_vel", 1, cmd_vel_cb);
+  ros::spin();
+  dmxl_set_reg(h, 1, 0x18, 0); // disable torque
+  dmxl_set_reg(h, 2, 0x18, 0); // disable torque
+}
+
+
 int main(int argc, char **argv)
 {
   if (argc < 2)
@@ -184,6 +246,11 @@ int main(int argc, char **argv)
     blink(h);
   else if (!strcmp(cmd, "spin"))
     spin(h);
+  else if (!strcmp(cmd, "listen"))
+  {
+    ros::init(argc, argv, "roscar_driver");
+    roscar_listen(h);
+  }
   libusb_exit(NULL);
   return 0;
 }

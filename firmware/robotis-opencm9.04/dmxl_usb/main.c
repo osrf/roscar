@@ -78,7 +78,7 @@ int main()
         // it's been 150 ms since last motion command. stop the wheels plz
         uint16_t zero = 0;
         dmxl_set_regs(1, 0x20, 2, (uint8_t *)&zero); // set left velocity
-        delay_us(5);
+        delay_us(10);
         dmxl_set_regs(2, 0x20, 2, (uint8_t *)&zero); // set right velocity
         g_last_motion_cmd_time = t; // keep sending stop commands every 150 ms
       }
