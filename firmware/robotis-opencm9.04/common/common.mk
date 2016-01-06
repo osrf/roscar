@@ -3,7 +3,7 @@ OUT=$(BIN)/$(NAME)
 TC=arm-none-eabi-
 OPENOCD=openocd -f interface/ftdi/olimex-arm-usb-tiny-h.cfg -f interface/ftdi/olimex-arm-jtag-swd.cfg -f target/stm32f1x.cfg -f ../common/robotis-opencm.cfg 
 #COMMON_SRCS=usb enc parity
-COMMON_SRCS=startup stubs led pin systime console delay usb
+COMMON_SRCS=startup stubs led pin systime console delay usb dmxl
 COMMON_OBJS=$(COMMON_SRCS:%=$(BIN)/%.o)
 OBJS=$(SRCS:%.c=$(BIN)/%.o)
 IMAGE_START ?= 0x08000000

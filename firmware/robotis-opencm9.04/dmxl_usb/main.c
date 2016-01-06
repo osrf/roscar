@@ -22,6 +22,11 @@ struct status_pkt g_status_pkt;
 void usb_rx(const uint8_t ep, const uint8_t *data, const uint8_t len)
 {
   printf("rx %d bytes on ep%d\r\n", (int)len, (int)ep);
+  uint32_t cmd = *((uint32_t *)(&data[0]));
+  if (cmd == 1) // DRIVE
+  {
+    uint16_t left = *((uint16_t *)(&data[1]));
+  }
   if (data[0])
     led_on();
   else
