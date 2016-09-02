@@ -1,4 +1,4 @@
-# Installation
+# Toolchain Installation
 
 On Ubuntu 16.04 (Xenial) add the ARM embedded team's PPA and install
 their toolchain for the latest awesome cortex-m7 support (including FPU):
@@ -25,3 +25,28 @@ cd openocd
 make -j8
 sudo make install
 ```
+
+# Organization
+
+The "common" directory contains a peripheral library for this board. Those
+sources are linked into the various applications, which are siblings of the
+"common" directory. At time of writing, that consists solely of a "blink"
+program and a "console" program which just prints hello.
+
+# Compiling Stuff
+
+To build an application, just go into its directory and type `make`. That will
+build the common library, the application sources, and put the resulting
+build products in a `bin` subdirectory of the application directory.
+
+# Flash Programming Stuff
+
+To flash an application, just go into its directory and type `make program`.
+
+# Debugging Stuff
+
+You'll need two consoles. In the first console, type `make program` to ensure
+that you have loaded the latest binary, and then type `make gdb_server` to
+attach to it on the target. Then, in a second console, type `make gdb` to
+launch GDB and halt the target. Then you can set breakpoints and poke around
+as usual.
