@@ -45,8 +45,25 @@ To flash an application, just go into its directory and type `make program`.
 
 # Debugging Stuff
 
+The most useful debugging tool of all time is still `printf()`. Using the
+ST-LINK on the Nucleo boards is nice because the ST-LINK microcontroller
+acts as both a JTAG adapter and a virtual serial port over the same USB cable,
+so you have less mess on your desk. You can view the serial console using
+the little `console` program in the source tree:
+
+```
+cd [ROOT OF GIT CLONE OF THIS REPOSITORY]
+cd software/console
+make
+bin/console /dev/ttyACM0
+```
+
+The last line assumes that you don't have any other USB CDC devices attached
+to your machine; you may need to use a different /dev/ttyACM in that case.
+
+When `printf()` is not sufficient, the next tool to reach for is usually `gdb`.
 You'll need two consoles. In the first console, type `make program` to ensure
-that you have loaded the latest binary, and then type `make gdb_server` to
+that you have flashed the latest binary, and then type `make gdb_server` to
 attach to it on the target. Then, in a second console, type `make gdb` to
-launch GDB and halt the target. Then you can set breakpoints and poke around
-as usual.
+launch GDB and halt the target. Then you can set breakpoints, run the program,
+and poke around as usual.
