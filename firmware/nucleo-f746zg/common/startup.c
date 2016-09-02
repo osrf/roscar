@@ -5,12 +5,7 @@
 #include "flash.h"
 #include <led.h>
 
-// crystal HSE_OSC is 25 MHz
-
-// TODO: change this, because stm32f7 is way more awesome than this:
-// we want SYSCLK, AHB, and APB2 to run at 72 MHz
-// we want APB1 at 36 MHz
-// we want USBCLK at 48 MHz using the /1.5 USB prescalar from 72 MHz PLLCLK
+// on the STM32F746-Nucleo board, the inbound clock from the ST-LINK is 8 MHz
 
 extern uint32_t _srelocate_flash, _srelocate, _erelocate, _ebss, _sbss;
 extern int main();
