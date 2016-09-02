@@ -65,13 +65,14 @@ LightweightSerial::LightweightSerial(const char *port, int baud) :
 	newtio.c_cc[VTIME] = 0;
 	newtio.c_cc[VMIN] = 0; // poll
   //newtio.c_speed = B38400; // dummy, will be overwritten momentarily
-	//cfsetspeed(&newtio, baud);
+	cfsetspeed(&newtio, baud);
 	tcflush(fd, TCIOFLUSH);
 	if (tcsetattr(fd, TCSANOW, &newtio) < 0)
 	{
 		printf(" ahhhhhhhhhhh tcsetattr failed\n");
 		return;
 	}
+  /*
   serial_struct s;
   if (ioctl(fd, TIOCGSERIAL, &s) < 0) 
   {
@@ -86,6 +87,7 @@ LightweightSerial::LightweightSerial(const char *port, int baud) :
     printf("ahhh ioctl TIOCSSERIAL (set) failed\n");
     return;
   }
+  */
 
 	// flush the buffer of the serial device
 	uint8_t b;

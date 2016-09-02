@@ -13,7 +13,6 @@ static volatile bool s_console_init_complete = false;
 static volatile USART_TypeDef * const s_console_usart = USART3;
 
 // USART3 sits on APB1, which is 54 MHz
-// (used to be 36 mhz)
 
 void console_init()
 {
@@ -22,7 +21,7 @@ void console_init()
   pin_set_alternate_function(GPIOD, PORTD_TX_PIN, 7); // USART3 is AF7
   s_console_usart->CR1 &= ~USART_CR1_UE;
   s_console_usart->CR1 |=  USART_CR1_TE | USART_CR1_RE;
-  s_console_usart->BRR  = 469;
+  s_console_usart->BRR  = 54; // this will produce 1 megabit
   s_console_usart->CR1 |=  USART_CR1_UE;
 }
 
