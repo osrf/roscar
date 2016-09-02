@@ -1,5 +1,5 @@
 #include "usb.h"
-#include "stm32f103xb.h"
+#include "stm32f746xx.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include "delay.h"

@@ -1,16 +1,14 @@
-#include "metal/stack.h"
-#include "startup.h"
+#include "stack.h"
+//#include "startup.h"
 
 void unmapped_vector(void)
 {
   while (1) { } // spin here to allow jtag trap
 }
 
-// todo: these are copied straight from stm32f4_vectors. i'm sure there are
-// some new stm32f7 ones. need to figure that out and update this file.
-
 // declare weak symbols for all interrupt so they can be overridden easily
 #define WEAK_VECTOR __attribute__((weak, alias("unmapped_vector")))
+void reset_vector(void) WEAK_VECTOR;
 void nmi_vector(void) WEAK_VECTOR;
 void hardfault_vector(void) WEAK_VECTOR;
 void memmanage_vector(void) WEAK_VECTOR;
@@ -118,8 +116,6 @@ void hdmi_cec_vector(void) WEAK_VECTOR;
 void i2c4_ev_vector(void) WEAK_VECTOR;
 void i2c4_er_vector(void) WEAK_VECTOR;
 void spdif_rx_vector(void) WEAK_VECTOR;
-
-void dummy_reset_vector(void) { }
 
 typedef void (*vector_func_t)(void);
 volatile __attribute__((used,section(".vectors"))) vector_func_t g_vectors[] =

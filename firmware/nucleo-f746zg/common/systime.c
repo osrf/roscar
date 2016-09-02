@@ -1,5 +1,5 @@
 #include "systime.h"
-#include "stm32f103xb.h"
+#include "stm32f746xx.h"
 #include "delay.h"
 
 // TIM2 and TIM3 have a 72 MHz clock coming into them

@@ -1,24 +1,24 @@
 #include "console.h"
-#include "stm32f103xb.h"
+#include "stm32f746xx.h"
 #include "pin.h"
 
-// pin connections
-// PA2 = usart2 TX
-// PA3 = usart2 RX
+// pin connections to send console through ST-LINK virtual serial port:
+// PD8 = USART3 TX
+// PD9 = USART3 RX
 
-#define PORTA_TX_PIN 2
-#define PORTA_RX_PIN 3
+#define PORTD_TX_PIN 8
+#define PORTD_RX_PIN 9
 
 static volatile bool s_console_init_complete = false;
-static volatile USART_TypeDef * const s_console_usart = USART2;
+static volatile USART_TypeDef * const s_console_usart = USART3;
 
 // USART2 sits on APB1, which is 36 MHz
 
 void console_init()
 {
   s_console_init_complete = true;
-  RCC->APB1ENR |= RCC_APB1ENR_USART2EN;
-  pin_set_alternate_function(GPIOA, PORTA_TX_PIN, true, PIN_PULL_NONE);
+  RCC->APB1ENR |= RCC_APB1ENR_USART3EN;
+  pin_set_alternate_function(GPIOD, PORTD_TX_PIN, 7); // USART3 is AF7
   s_console_usart->CR1 &= ~USART_CR1_UE;
   s_console_usart->CR1 |=  USART_CR1_TE | USART_CR1_RE;
   s_console_usart->BRR  = (((uint16_t)2) << 4) | 4;
@@ -31,9 +31,9 @@ void console_send_block(const uint8_t *buf, uint32_t len)
     console_init();
   for (uint32_t i = 0; i < len; i++)
   {
-    while (!(s_console_usart->SR & USART_SR_TXE)) { } // wait for tx to clear
-    s_console_usart->DR = buf[i];
+    while (!(s_console_usart->ISR & USART_ISR_TXE)) { } // wait for tx to clear
+    s_console_usart->TDR = buf[i];
   }
-  while (!(s_console_usart->SR & USART_SR_TC)) { } // wait for TX to finish
+  while (!(s_console_usart->ISR & USART_ISR_TC)) { } // wait for TX to finish
 }
 
