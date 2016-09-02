@@ -1,13 +1,15 @@
 #include "led.h"
 #include "delay.h"
 #include "systime.h"
+#include "console.h"
+#include <stdio.h>
 
 int main()
 {
   led_init();
   led_on();
-  //console_init();
-  //puts("===== APP ENTRY =====\r\n");
+  console_init();
+  puts("===== ENTRY =====\r\n");
   //systime_init();
   while (1)
   {

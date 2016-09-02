@@ -44,7 +44,7 @@ void reset_vector()
   RCC->CFGR = RCC_CFGR_SW_HSI; // ensure the HSI is the clock source
   RCC->CR &= ~(RCC_CR_PLLON | RCC_CR_HSEON | RCC_CR_CSSON); // turn off Fancy
   //RCC->PLLCFGR = 0x24003010; // ensure PLLCFGR is at reset state
-  RCC->CR &= ~RCC_CR_HSEBYP; // reset HSEBYP (i.e., HSE is *not* bypassed)
+  RCC->CR |= RCC_CR_HSEBYP; // reset HSEBYP (i.e., HSE *is* bypassed)
   RCC->CIR = 0x0; // disable all RCC interrupts
   RCC->CR |= RCC_CR_HSEON; // enable HSE oscillator (off-chip crystal)
   for (volatile uint32_t i = 0;
@@ -61,9 +61,9 @@ void reset_vector()
   RCC->CFGR |= RCC_CFGR_PPRE2_DIV2; // set APB high-speed clock to sysclock/2
   RCC->CFGR |= RCC_CFGR_PPRE1_DIV4; // set APB  low-speed clock to sysclock/4
   // PLL_M sets up an input frequency of 1 MHz for the PLL's, as per datasheet
-  #define PLL_M (HSE_VALUE / 1000000)
+  //#define PLL_M (HSE_VALUE / 1000000)
+  #define PLL_M 8
   // PLL_N is the main multipler. this sets up a VCO frequency of 1 * N = 432
-  //#define PLL_N 432
   #define PLL_N 432
   // SYSCLK = PLL_VCO / PLL_P = 432 / 2 = 216 MHz
   #define PLL_P   2
