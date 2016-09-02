@@ -2,9 +2,9 @@
 #define DELAY_H
 
 #include <stdint.h>
-void delay_ns(uint32_t ns);
-void delay_us(uint32_t us);
-void delay_ms(uint32_t ms);
+void delay_ns(const uint32_t ns);
+void delay_us(const uint32_t us);
+void delay_ms(const uint32_t ms);
 
 #endif
 

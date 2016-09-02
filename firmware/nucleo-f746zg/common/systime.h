@@ -2,9 +2,10 @@
 #define SYSTIME_H
 
 #include <stdint.h>
+#include "stm32f746xx.h"
 
 void systime_init();
-uint32_t systime_usecs();
+#define SYSTIME (TIM2->CNT)
 
 #endif
 
