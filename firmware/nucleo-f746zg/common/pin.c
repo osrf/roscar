@@ -85,7 +85,6 @@ void pin_set_output_state(GPIO_TypeDef *gpio,
     gpio->BSRR = (1 << pin_idx) << 16;
 }
 
-#if 0
 void pin_set_output_speed(GPIO_TypeDef *gpio,
                           const uint_fast8_t pin_idx,
                           const uint_fast8_t speed)
@@ -98,7 +97,6 @@ void pin_set_output_speed(GPIO_TypeDef *gpio,
   gpio->OSPEEDR &= ~(0x3 << (pin_idx * 2)); // wipe out the old setting
   gpio->OSPEEDR |= speed << (pin_idx * 2);  // stuff in the new one
 }
-#endif
 
 void pin_toggle_state(GPIO_TypeDef *gpio, const uint8_t pin_idx)
 {

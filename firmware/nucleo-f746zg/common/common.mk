@@ -2,13 +2,13 @@ BIN=bin
 OUT=$(BIN)/$(NAME)
 TC=arm-none-eabi-
 OPENOCD=openocd -f ../common/st_nucleo_f7.cfg -f ../common/stm32f7x.cfg
-COMMON_SRCS=stack stm32f7_vectors startup stubs led pin systime console delay flash
+COMMON_SRCS=stack stm32f7_vectors startup stubs led pin systime console delay flash usb
 #COMMON_SRCS=startup stubs led pin systime console delay usb dmxl
 COMMON_OBJS=$(COMMON_SRCS:%=$(BIN)/%.o)
 OBJS=$(SRCS:%.c=$(BIN)/%.o)
 IMAGE_START ?= 0x08000000
 ARCH_FLAGS=-mthumb -mcpu=cortex-m7 -mfloat-abi=hard -mfpu=fpv5-sp-d16
-CFLAGS=-g $(ARCH_FLAGS) -ffunction-sections -fdata-sections -MD -std=gnu99 -Wall -I../common -DSTM32F746 -DHSE_VALUE=25000000 -Werror -I.
+CFLAGS=-g $(ARCH_FLAGS) -ffunction-sections -fdata-sections -MD -std=gnu99 -Wall -I../common -DSTM32F746 -DHSE_VALUE=8000000 -Werror -I.
 LDFLAGS=-g $(ARCH_FLAGS)
 
 default: $(BIN) $(OUT).bin
