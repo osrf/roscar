@@ -8,13 +8,9 @@ int main()
 {
   led_init();
   led_on();
-  console_init();
-  puts("===== ENTRY =====\r\n");
-  //systime_init();
   while (1)
   {
-    //delay_ms(500);
-    for (volatile int i = 0; i < 1000000; i++) { }
+    for (volatile int i = 0; i < 10000000; i++) { }
     led_toggle();
   }
   return 0;

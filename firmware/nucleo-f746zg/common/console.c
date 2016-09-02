@@ -22,7 +22,7 @@ void console_init()
   pin_set_alternate_function(GPIOD, PORTD_TX_PIN, 7); // USART3 is AF7
   s_console_usart->CR1 &= ~USART_CR1_UE;
   s_console_usart->CR1 |=  USART_CR1_TE | USART_CR1_RE;
-  s_console_usart->BRR  = 144; // TODO: fix this
+  s_console_usart->BRR  = 469;
   s_console_usart->CR1 |=  USART_CR1_UE;
 }
 
